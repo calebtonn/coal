@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coal.dev/schema/intent-manifest/0.1.json",
+  "title": "Intent Manifest",
+  "description": "A portable, user-owned record of one unit of intent: what a person is trying to accomplish, what has been produced toward it, and where it stands.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "$schema",
+    "version",
+    "id",
+    "intent",
+    "status",
+    "artifacts",
+    "state",
+    "provenance",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://coal.dev/schema/intent-manifest/0.1.json"
+    },
+    "version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "intent": {
+      "type": "object",
+      "required": [
+        "summary"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "goal": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "user",
+            "model"
+          ],
+          "description": "Who wrote summary. Readers prefer user."
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "done",
+        "abandoned"
+      ]
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "state": {
+      "type": "object",
+      "required": [
+        "lastActivityAt"
+      ],
+      "properties": {
+        "lastActivityAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "nextStep": {
+          "type": "string"
+        },
+        "openQuestions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "contexts": {
+      "type": "array",
+      "description": "Where this intent is relevant. Used to surface the manifest without a search.",
+      "items": {
+        "$ref": "#/$defs/context"
+      }
+    },
+    "owner": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "required": [
+        "scope"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "local",
+            "shared",
+            "public"
+          ]
+        }
+      },
+      "default": {
+        "scope": "local"
+      }
+    },
+    "createdAt": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "updatedAt": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "ext": {
+      "type": "object",
+      "description": "Namespaced extensions keyed by reverse-DNS identifier.",
+      "additionalProperties": {
+        "type": "object"
+      }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "UUIDv7, lowercase"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601, UTC"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "tool"
+      ],
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string"
+        },
+        "sessionRef": {
+          "type": "string",
+          "description": "Opaque locator. Never an auth token."
+        },
+        "capturedBy": {
+          "type": "string"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "required": [
+        "hash",
+        "title",
+        "type",
+        "mime",
+        "createdAt",
+        "producer"
+      ],
+      "properties": {
+        "hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "html",
+            "code",
+            "doc",
+            "data",
+            "image",
+            "other"
+          ]
+        },
+        "mime": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string",
+          "format": "uri"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "producer": {
+          "$ref": "#/$defs/provenance"
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "required": [
+        "kind",
+        "key"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "repo",
+            "path",
+            "url",
+            "calendar",
+            "channel",
+            "project",
+            "other"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "e.g. a repo remote, an absolute path, a calendar event id, a Slack channel id"
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": [
+        "rel",
+        "id"
+      ],
+      "properties": {
+        "rel": {
+          "type": "string",
+          "enum": [
+            "related",
+            "supersedes",
+            "supersededBy",
+            "derivedFrom",
+            "partOf"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/uuid"
+        }
+      }
+    }
+  }
+}
