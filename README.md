@@ -45,6 +45,58 @@ Two packages on purpose. One installable, one library. Split further only when a
 
 Capture in the MVP comes from Claude Code only, because it is the one mainstream tool with lifecycle hooks. The pain that started this project (an HTML page buried in a claude.ai chat) is served in the MVP by `coal add` on a downloaded artifact, and properly by browser capture in Phase 2. The MVP proves the record and the resume; it does not yet prove universal capture.
 
+## Phases
+
+Each phase is useful on its own and has a stop condition. Only Phase 1 has a date. The rest are earned by the retro at the end of the phase before, not scheduled.
+
+### Phase 1: Record (six weeks)
+
+What it proves: a user-owned record of work can be captured without effort and read back by a different tool. The next session can open by offering to continue.
+
+- Intent Manifest v0.1, published schema with validator and example
+- Claude Code hooks: capture on write, summarize on stop
+- Resume: a new session speaks first with the next step
+- MCP server, `coal` CLI, local web UI
+- Two packages: `diamond` and `coal`
+
+Stop condition: the week six retro. If the author did not reach for it unprompted at least five times in a week, it is a tool, not a layer.
+
+### Phase 2: Reach
+
+What it proves: the record works across every tool, not just the one with hooks. Capture is not a Claude Code feature.
+
+- `coal import`: build manifests from existing session logs on first run
+- Browser capture from claude.ai and chatgpt.com
+- Cursor and other MCP writers
+- Semantic search with a local embedding model
+- Launcher integration (Raycast) as the entry point
+
+Stop condition: a manifest written by a tool other than Claude Code is found and resumed from a third tool.
+
+### Phase 3: Attention
+
+What it proves: the record is enough to anticipate. The whiteboard loop (sense, model, decide, act) runs on user-owned data with user-owned rules, and people keep it on.
+
+- Signals: calendar, git activity, IDE focus, time of day
+- Surfacing by context, not search
+- Policy engine: editable rules, overrides as the training signal
+- Interrupt gating for Slack and chat
+- Menu bar app for notifications and launching
+
+Stop condition: surfaced items are opened more often than dismissed, and nobody has turned surfacing off.
+
+### Phase 4: Portability
+
+What it proves: this is a standard, not a tool. A second implementer writes manifests and a user moves between stores without loss.
+
+- Spec v1.0 with a second implementer
+- Encrypted multi-device sync
+- Export and import between stores
+- Optional fact-store adapter (for example OpenMemory) for preferences
+- Org tier: fleet install, SSO, aggregate visibility only
+
+Stop condition: a manifest written by software this repo did not produce validates and resumes here.
+
 ## Principles
 
 - **Local-first.** Your data lives in `~/.coal/`. No account required to use it.
