@@ -1,8 +1,10 @@
-# COAL: Cognitive Orchestration AI Layer
+<p align="center">
+  <img src="assets/icon-256.png" alt="COAL icon: a lump of coal cracked open with a diamond inside" width="160">
+</p>
 
-<img src="assets/icon-128.png" alt="COAL icon: a lump of coal cracked open with a diamond inside" width="96">
-
-A user-owned record of work that sits between you and every AI tool you use.
+<h1 align="center">COAL</h1>
+<p align="center"><b>Cognitive Orchestration AI Layer</b></p>
+<p align="center">A user-owned record of work that sits between you and every AI tool you use.</p>
 
 You talk to Claude, ChatGPT, Cursor, Claude Code. Each one produces artifacts (HTML pages, scripts, docs, decisions) and each one forgets what you were doing the moment the session ends. The chat is the only index, and the chat is the wrong index. Nobody thinks "which conversation was that in." They think "the budget thing I built last week."
 
