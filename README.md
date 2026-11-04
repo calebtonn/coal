@@ -49,9 +49,16 @@ Capture in the MVP comes from Claude Code only, because it is the one mainstream
 
 ## Phases
 
-Each phase is useful on its own and has a stop condition. Only Phase 1 has a date. The rest are earned by the retro at the end of the phase before, not scheduled.
+**The MVP is Phase 1 and nothing else.** Phases 2 through 4 are the direction, not the plan. Each one is earned by the retro at the end of the phase before it, and only Phase 1 has a date.
 
-### Phase 1: Record (six weeks)
+| Phase | Name | Status | Proves |
+|---|---|---|---|
+| 1 | Record | **MVP, in progress** | A user-owned record can be captured and read back by a different tool |
+| 2 | Reach | Not started | Capture works across every tool, not just the one with hooks |
+| 3 | Attention | Not started | The record is enough to anticipate, with user-owned rules |
+| 4 | Portability | Not started | This is a standard, not a tool |
+
+### Phase 1: Record (the MVP, six weeks)
 
 What it proves: a user-owned record of work can be captured without effort and read back by a different tool. The next session can open by offering to continue.
 
