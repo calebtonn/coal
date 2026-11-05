@@ -12,14 +12,16 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 
 - PR #10 fetched as `pr-10` and merged into `poc/go` (`0c95b8b`); ADR-011 to ADR-015 marked accepted for the POC. Follow-up edits to F5, T08, T09, the README phase table, the definition of done and the capture diagram (`731d9bf`).
 
+- M7 web UI on Svelte 5 and `@davenicoll/web-framework` (`1b6c815`, `ce6489d`, `6e0b921`): 15 Vitest tests pass, svelte-check clean. It depends on the sibling checkout through symlinks, so `preserveSymlinks` is set in the Vite and TypeScript configs. Built against the M4 API contract; not yet wired to a daemon.
+
 ## In progress
 
 - M2 store (builder on Opus).
-- M7 web UI on Svelte 5 and `@davenicoll/web-framework` (builder on Opus), built against the M4 API contract.
+- M7 follow-up: precompile the Ajv validator at build time so the daemon's Content-Security-Policy needs no `unsafe-eval`.
 
 ## Next
 
-- M3 index, M4 daemon, M5 MCP, M6 capture, M8 demo, M9 remaining issue work, M10 import.
+- M3 index, M4 daemon (strict CSP on `index.html`), M5 MCP, M6 capture, M8 demo, M9 remaining issue work, M10 import.
 
 ## Issues
 
