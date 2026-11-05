@@ -21,7 +21,7 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `$schema` | string | yes | `https://coal.dev/schema/intent-manifest/0.1.json` |
+| `$schema` | string | yes | `https://coalmine.io/schema/intent-manifest/0.1.json` |
 | `version` | string | yes | `"0.1"` |
 | `id` | string (UUIDv7) | yes | Stable identity |
 | `intent` | Intent | yes | |

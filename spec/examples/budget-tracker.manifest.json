@@ -1,5 +1,5 @@
 {
-  "$schema": "https://coal.dev/schema/intent-manifest/0.1.json",
+  "$schema": "https://coalmine.io/schema/intent-manifest/0.1.json",
   "version": "0.1",
   "id": "019a3f2c-8e4b-7d31-9a5c-2f6b1c8d4e70",
   "intent": {

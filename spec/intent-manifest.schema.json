@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://coal.dev/schema/intent-manifest/0.1.json",
+  "$id": "https://coalmine.io/schema/intent-manifest/0.1.json",
   "title": "Intent Manifest",
   "description": "A portable, user-owned record of one unit of intent: what a person is trying to accomplish, what has been produced toward it, and where it stands.",
   "type": "object",
@@ -20,7 +20,7 @@
   "properties": {
     "$schema": {
       "type": "string",
-      "const": "https://coal.dev/schema/intent-manifest/0.1.json"
+      "const": "https://coalmine.io/schema/intent-manifest/0.1.json"
     },
     "version": {
       "type": "string",

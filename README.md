@@ -5,6 +5,7 @@
 <h1 align="center">COAL</h1>
 <p align="center"><b>Cognitive Orchestration AI Layer</b></p>
 <p align="center">A user-owned record of work that sits between you and every AI tool you use.</p>
+<p align="center"><a href="https://coalmine.io">coalmine.io</a></p>
 
 You talk to Claude, ChatGPT, Cursor, Claude Code. Each one produces artifacts (HTML pages, scripts, docs, decisions) and each one forgets what you were doing the moment the session ends. The chat is the only index, and the chat is the wrong index. Nobody thinks "which conversation was that in." They think "the budget thing I built last week."
 
