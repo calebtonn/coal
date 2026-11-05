@@ -17,6 +17,11 @@ import (
 	"github.com/calebtonn/coal/internal/manifest"
 )
 
+// ErrUnavailable marks an apply error that is not the event's fault,
+// such as a store that cannot be opened. Drain stops and leaves the
+// event and the rest of the queue in place for the next drain.
+var ErrUnavailable = errors.New("queue: writer unavailable")
+
 // Dir returns the queue directory under the data dir.
 func Dir(dataDir string) string { return filepath.Join(dataDir, "queue") }
 
@@ -62,7 +67,8 @@ func Enqueue(dataDir string, e *capture.Event) error {
 // Drain takes queue/.lock and applies every queued event in id order,
 // which is time order for UUIDv7. Each event file is deleted after a
 // successful apply. An event that fails to parse or apply is moved to
-// queue/failed/ and logged, and the drain carries on. Drain repeats
+// queue/failed/ and logged, and the drain carries on. An apply error
+// wrapping ErrUnavailable stops the drain with every event left queued. Drain repeats
 // until the queue is empty, so events that arrive meanwhile are folded
 // too. When wait is false and another process holds the lock, Drain
 // returns 0, nil at once.
@@ -114,7 +120,10 @@ func drain(dataDir string, apply func(*capture.Event) error, take func(*os.File)
 		}
 		for _, name := range names {
 			path := filepath.Join(dir, name)
-			if ferr := applyFile(path, apply); ferr != nil {
+			if ferr := applyFile(path, apply); errors.Is(ferr, ErrUnavailable) {
+				logf(dataDir, "queue: stopping the drain at %s: %v", name, ferr)
+				return n, false, ferr
+			} else if ferr != nil {
 				logf(dataDir, "queue: %s: %v", name, ferr)
 				if merr := moveFailed(dir, name); merr != nil {
 					return n, false, fmt.Errorf("queue: cannot set aside %s: %w", name, merr)
@@ -192,4 +201,22 @@ func logf(dataDir, format string, args ...any) {
 	}
 	defer f.Close()
 	fmt.Fprintf(f, "%s "+format+"\n", append([]any{time.Now().UTC().Format(time.RFC3339)}, args...)...)
+}
+
+// RetryFailed moves every event in queue/failed/ back into the queue so
+// the next drain tries it again. It returns how many it moved.
+func RetryFailed(dataDir string) (int, error) {
+	dir := Dir(dataDir)
+	names, err := pending(filepath.Join(dir, "failed"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	n := 0
+	for _, name := range names {
+		if err := os.Rename(filepath.Join(dir, "failed", name), filepath.Join(dir, name)); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, err
 }

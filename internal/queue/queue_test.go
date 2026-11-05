@@ -2,6 +2,7 @@ package queue
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,5 +153,44 @@ func TestDrainUntilFree(t *testing.T) {
 	n, busy, err := DrainUntil(dir, func(*capture.Event) error { return nil }, time.Now().Add(time.Second))
 	if n != 1 || busy || err != nil {
 		t.Fatalf("n=%d busy=%v err=%v", n, busy, err)
+	}
+}
+
+func TestDrainUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	for range 3 {
+		_ = Enqueue(dir, ev(capture.KindPrompt))
+	}
+	calls := 0
+	n, err := Drain(dir, func(*capture.Event) error {
+		calls++
+		return fmt.Errorf("open store: %w", ErrUnavailable)
+	}, true)
+	if n != 0 || !errors.Is(err, ErrUnavailable) || calls != 1 {
+		t.Fatalf("n=%d calls=%d err=%v", n, calls, err)
+	}
+	if left, _ := pending(Dir(dir)); len(left) != 3 {
+		t.Errorf("queued: %d", len(left))
+	}
+	if _, err := os.Stat(filepath.Join(Dir(dir), "failed")); err == nil {
+		t.Error("failed/ was used")
+	}
+}
+
+func TestRetryFailed(t *testing.T) {
+	dir := t.TempDir()
+	if n, err := RetryFailed(dir); n != 0 || err != nil {
+		t.Fatalf("empty: %d %v", n, err)
+	}
+	e := ev(capture.KindPrompt)
+	_ = Enqueue(dir, e)
+	Drain(dir, func(*capture.Event) error { return errors.New("bad") }, true)
+	if n, err := RetryFailed(dir); n != 1 || err != nil {
+		t.Fatalf("retry: %d %v", n, err)
+	}
+	var got []string
+	Drain(dir, func(e *capture.Event) error { got = append(got, e.ID); return nil }, true)
+	if len(got) != 1 || got[0] != e.ID {
+		t.Errorf("retried: %v", got)
 	}
 }
