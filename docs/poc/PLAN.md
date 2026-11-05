@@ -177,6 +177,10 @@ Each milestone is one builder task, under 1000 changed lines excluding generated
 - Accept: `go test ./internal/queue/... ./internal/capture/... ./internal/marker/...` passes
 - Demo: `scripts/replay-session.sh` runs the recorded payloads through `coal hook`, then `coal find budget`, then `coal hook session-start` prints the resume line
 
+### M6 split
+
+M6 runs in two parts so it can start before the store lands. M6a is the capture contract, queue, marker and matching, summary filter and resume output, with no store dependency. M6b is folding events into manifests through the store, `coal hook`, `coal queue drain` and `coal adapter install|uninstall`.
+
 ### M7. Web UI
 
 - `web/`: a Svelte 5 app on `@davenicoll/web-framework` (Dave's request, 2026-11-04). Dependency `"@davenicoll/web-framework": "file:../../web-framework"` on the sibling checkout at `/home/dave/Source/davenicoll/web-framework`, installed with Bun. Toolchain per that repo's README: `svelte`, `@sveltejs/vite-plugin-svelte`, `tailwindcss`, `@tailwindcss/vite`, `daisyui`, `@lucide/svelte`, `typescript@~5.9`, `svelte-check`, and `themeInitPlugin()` in the Vite config
@@ -243,7 +247,7 @@ GitHub issues stay open. Nothing is closed or commented on from this project.
 
 - Builders run on Claude Opus 5.5 and get one milestone each with this plan and the relevant docs as the brief. Design, review and merges stay with the lead on Fable 5.1.
 - Review gate (Dave, 2026-11-04): once there is a decent end-to-end build (M6 capture working with M3 to M5), a Fable 5.1 reviewer that did not write the code cross-checks the diff from `main`. Confirmed findings are fixed before the build is called done, and again before M8 is signed off. `poc/go` stays local; there is no push.
-- At most two builders at once; test suites run one at a time because this laptop also runs other CI.
+- Up to four builders at once (Dave, 2026-11-04). Each runs only its own packages' tests, and full suites run one at a time because this laptop also runs other CI.
 - All data under `.sandbox/`. Hooks are tested with recorded JSON and settings files inside the sandbox. Nothing writes to `~/.claude/` or `~/.coal/`.
 - No pushes, PRs, issue comments or workflow files. Commits go to `poc/go` only.
 - Stop processes by PID. No `rm -rf` outside `.sandbox/`, `web/dist` and `web/node_modules`.
