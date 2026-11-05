@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -346,5 +347,129 @@ func TestTick(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func (c *mimeCache) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.rebuilds
+}
+
+// Fable review U5: unknown hashes cannot make the daemon re-read the data
+// dir on every request.
+func TestMIMECacheBounded(t *testing.T) {
+	a := openApp(t)
+	s, h := newServer(a, Options{UI: fstest.MapFS{}})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	m := seed(t, srv) // the seed's own writes reset the cache
+	fake := func(i int) string { return strings.Repeat("0", 60) + fmt.Sprintf("%04x", i) }
+
+	base := s.mimes.count()
+	for i := range 100 {
+		res, body := do(t, srv, "GET", "/api/artifacts/"+fake(i), "")
+		want(t, res, body, 404)
+	}
+	if n := s.mimes.count() - base; n > 1 {
+		t.Fatalf("100 unknown hashes caused %d rebuilds, want at most 1", n)
+	}
+
+	// A body written behind the daemon's back, as a hook would, gets its
+	// MIME without waiting for the next tick.
+	art, err := a.RegisterArtifact(m.ID, store.ArtifactInput{Content: []byte("a,b\n"), Title: "rows.csv"}, store.Op{Tool: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, body := do(t, srv, "GET", "/api/artifacts/"+strings.TrimPrefix(art.Hash, "sha256:"), "")
+	want(t, res, body, 200)
+	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/csv") {
+		t.Fatalf("csv MIME: %s", res.Header.Get("Content-Type"))
+	}
+
+	s.tick()
+	base = s.mimes.count()
+	for i := range 100 {
+		do(t, srv, "GET", "/api/artifacts/"+fake(i), "")
+	}
+	if n := s.mimes.count() - base; n != 1 {
+		t.Fatalf("after a tick: %d rebuilds, want 1", n)
+	}
+}
+
+// Fable review U6 and C6: a state change bumps lastActivityAt and stamps
+// the state; a status change bumps lastActivityAt only.
+func TestPatchActivityAndStamp(t *testing.T) {
+	a := openApp(t)
+	srv := start(t, a, fstest.MapFS{})
+	m := seed(t, srv)
+	old := "2020-01-01T00:00:00Z"
+	setOld := func() {
+		if _, err := a.Update(m.ID, 0, func(m *manifest.Manifest) error { m.State.LastActivityAt = old; return nil }, store.Op{Tool: "test"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	setOld()
+	res, body := do(t, srv, "PATCH", "/api/manifests/"+m.ID, `{"status":"paused"}`)
+	want(t, res, body, 200)
+	got, _ := a.Get(m.ID)
+	if got.State.LastActivityAt == old {
+		t.Fatal("status change did not bump lastActivityAt")
+	}
+	if _, ok := manifest.StateStampOf(got); ok {
+		t.Fatal("status-only change stamped the state")
+	}
+
+	setOld()
+	res, body = do(t, srv, "PATCH", "/api/manifests/"+m.ID, `{"intent":{"goal":"Track spending"}}`)
+	want(t, res, body, 200)
+	if got, _ = a.Get(m.ID); got.State.LastActivityAt != old {
+		t.Fatal("goal change bumped lastActivityAt")
+	}
+
+	res, body = do(t, srv, "PATCH", "/api/manifests/"+m.ID, `{"state":{"nextStep":"Add CSV export"}}`)
+	want(t, res, body, 200)
+	got, _ = a.Get(m.ID)
+	stamp, ok := manifest.StateStampOf(got)
+	if got.State.LastActivityAt == old || !ok || stamp.RecordedBy != "coal-web" {
+		t.Fatalf("state change: lastActivityAt %s stamp %+v %v", got.State.LastActivityAt, stamp, ok)
+	}
+
+	// Setting the same value again changes nothing, so no fresh stamp.
+	setOld()
+	res, body = do(t, srv, "PATCH", "/api/manifests/"+m.ID, `{"state":{"nextStep":"Add CSV export"}}`)
+	want(t, res, body, 200)
+	if got, _ = a.Get(m.ID); got.State.LastActivityAt != old {
+		t.Fatal("a no-op state PATCH bumped lastActivityAt")
+	}
+}
+
+// Fable review U8: a Host with no port means port 80.
+func TestAllowedHostDefaultPort(t *testing.T) {
+	check := func(host string, local net.Addr) bool {
+		r := httptest.NewRequest("GET", "/health", nil)
+		r.Host = host
+		if local != nil {
+			r = r.WithContext(context.WithValue(r.Context(), http.LocalAddrContextKey, local))
+		}
+		return allowedHost(r)
+	}
+	at := func(port int) net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port} }
+	for _, c := range []struct {
+		host  string
+		local net.Addr
+		ok    bool
+	}{
+		{"127.0.0.1", at(80), true},
+		{"localhost", at(80), true},
+		{"127.0.0.1", at(4242), false},
+		{"127.0.0.1:4242", at(4242), true},
+		{"evil.example", at(80), false},
+		{"127.0.0.1", nil, true},
+	} {
+		if got := check(c.host, c.local); got != c.ok {
+			t.Errorf("Host %q on %v: allowed %v, want %v", c.host, c.local, got, c.ok)
+		}
 	}
 }

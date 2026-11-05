@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -206,6 +207,7 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.mimes.reset()
 	created, err := s.app.Get(m.ID)
 	if err != nil {
 		s.fail(w, err)
@@ -265,11 +267,22 @@ func (s *server) patch(w http.ResponseWriter, r *http.Request) {
 		if len(p) == 0 {
 			return store.ErrNoChange
 		}
+		status, state := m.Status, m.State
+		state.OpenQuestions = slices.Clone(state.OpenQuestions)
 		if err := applyPatch(m, p); err != nil {
 			return err
 		}
+		stateChanged := !reflect.DeepEqual(state, m.State)
+		if stateChanged || status != m.Status {
+			m.State.LastActivityAt = manifest.Now()
+		}
+		if stateChanged {
+			// Capture reads the stamp to know the state was set on purpose.
+			manifest.StampState(m, producer)
+		}
 		return validate(m)
 	}, store.Op{Tool: producer, Action: "edit manifest"})
+	s.mimes.reset()
 	var ce *store.ConflictError
 	if errors.As(err, &ce) {
 		if cur, gerr := s.app.Get(id); gerr == nil {
@@ -402,33 +415,51 @@ func (s *server) addArtifact(w http.ResponseWriter, r *http.Request) {
 }
 
 // mimeCache maps a body hash to the MIME recorded for it, and to the
-// skipped reason for hashes that only appear without a body. It is
-// rebuilt from the manifests when a lookup misses.
+// skipped reason for hashes that only appear without a body. It is built
+// from the manifests on the first lookup after a reset, at most once:
+// unknown hashes stay unknown until the next reset, which comes with each
+// daemon write and each queue tick. So random hashes cannot make the
+// daemon re-read the data dir on every request. The one exception is a
+// body that exists on disk but is not in the cache yet (a hook wrote it
+// since the last reset): that rebuilds once per hash, so it is not
+// served for a year under the wrong MIME.
 type mimeCache struct {
-	mu      sync.Mutex
-	mime    map[string]string
-	skipped map[string]string
+	mu       sync.Mutex
+	built    bool
+	rebuilds int // for tests
+	mime     map[string]string
+	skipped  map[string]string
+	missed   map[string]bool // bodies on disk already rebuilt for
 }
 
 func (c *mimeCache) reset() {
 	c.mu.Lock()
-	c.mime, c.skipped = nil, nil
+	c.built = false
 	c.mu.Unlock()
 }
 
-func (c *mimeCache) lookup(a *app.App, hash string) (mime, skipped string) {
+func (c *mimeCache) lookup(a *app.App, hash string, onDisk bool) (mime, skipped string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, ok := c.mime[hash]; !ok {
-		if _, ok := c.skipped[hash]; !ok {
+	fresh := !c.built
+	if fresh {
+		c.rebuild(a)
+	}
+	if _, known := c.mime[hash]; !known && onDisk && !c.missed[hash] {
+		if !fresh {
+			missed := c.missed
 			c.rebuild(a)
+			c.missed = missed
 		}
+		c.missed[hash] = true
 	}
 	return c.mime[hash], c.skipped[hash]
 }
 
 func (c *mimeCache) rebuild(a *app.App) {
-	c.mime, c.skipped = map[string]string{}, map[string]string{}
+	c.built = true
+	c.rebuilds++
+	c.mime, c.skipped, c.missed = map[string]string{}, map[string]string{}, map[string]bool{}
 	ms, _ := a.Store.List()
 	for _, m := range ms {
 		for _, art := range m.Artifacts {
@@ -453,8 +484,8 @@ func (s *server) artifact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "artifact hash must be 64 lowercase hex characters")
 		return
 	}
-	mime, skipped := s.mimes.lookup(s.app, "sha256:"+hex)
 	f, err := os.Open(s.app.Store.ArtifactPath(hex))
+	mime, skipped := s.mimes.lookup(s.app, "sha256:"+hex, err == nil)
 	if err != nil {
 		if skipped != "" {
 			writeError(w, http.StatusNotFound, "this artifact has no stored body: "+skipped)

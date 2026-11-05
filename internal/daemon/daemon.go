@@ -25,7 +25,8 @@ type Options struct {
 	UI     fs.FS       // the built UI rooted at dist/; nil serves the "not built" page
 	Logger *log.Logger // one line per request; Serve defaults it to logs/daemon.log
 	Tick   func()      // called every TickEvery while serving, for the queue drain
-	// TickEvery defaults to two seconds.
+	// TickEvery defaults to two seconds. Each tick also clears the
+	// artifact MIME cache, since a drain may have added artifacts.
 	TickEvery time.Duration
 	// Ready is called with the listener address once Serve is listening.
 	Ready func(net.Addr)
@@ -41,6 +42,11 @@ type server struct {
 
 // New returns the daemon handler.
 func New(a *app.App, opts Options) http.Handler {
+	_, h := newServer(a, opts)
+	return h
+}
+
+func newServer(a *app.App, opts Options) (*server, http.Handler) {
 	s := &server{app: a, opts: opts, ui: newUI(opts.UI), logger: opts.Logger}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
@@ -56,7 +62,7 @@ func New(a *app.App, opts Options) http.Handler {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("no endpoint for %s %s", r.Method, r.URL.Path))
 	})
 	mux.Handle("/", s.ui)
-	return s.logRequests(s.guard(mux))
+	return s, s.logRequests(s.guard(mux))
 }
 
 // Serve listens on addr, which must be 127.0.0.1:<port>, and serves until
@@ -81,30 +87,29 @@ func Serve(ctx context.Context, a *app.App, addr string, opts Options) error {
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: New(a, opts), ReadHeaderTimeout: 10 * time.Second, ErrorLog: opts.Logger}
+	s, h := newServer(a, opts)
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second, ErrorLog: opts.Logger}
 	if opts.Ready != nil {
 		opts.Ready(ln.Addr())
 	}
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(ln) }()
-	if opts.Tick != nil {
-		every := opts.TickEvery
-		if every <= 0 {
-			every = 2 * time.Second
-		}
-		t := time.NewTicker(every)
-		defer t.Stop()
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-t.C:
-					opts.Tick()
-				}
-			}
-		}()
+	every := opts.TickEvery
+	if every <= 0 {
+		every = 2 * time.Second
 	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				s.tick()
+			}
+		}
+	}()
 	select {
 	case err := <-done:
 		return err
@@ -119,6 +124,13 @@ func Serve(ctx context.Context, a *app.App, addr string, opts Options) error {
 		return err
 	}
 	return nil
+}
+
+func (s *server) tick() {
+	if s.opts.Tick != nil {
+		s.opts.Tick()
+	}
+	s.mimes.reset()
 }
 
 // guard rejects other host names (DNS rebinding) and cross-origin writes,
@@ -142,9 +154,13 @@ func (s *server) guard(next http.Handler) http.Handler {
 }
 
 // allowedHost accepts 127.0.0.1:<port> and localhost:<port>, where port is
-// the port the request arrived on when the server knows it.
+// the port the request arrived on when the server knows it. A Host with no
+// port means port 80.
 func allowedHost(r *http.Request) bool {
 	host, port, err := net.SplitHostPort(r.Host)
+	if err != nil && !strings.Contains(r.Host, ":") {
+		host, port, err = r.Host, "80", nil
+	}
 	if err != nil || (host != "127.0.0.1" && host != "localhost") {
 		return false
 	}
