@@ -313,6 +313,9 @@ func TestSearchTenThousand(t *testing.T) {
 	if testing.Short() {
 		t.Skip("slow")
 	}
+	if raceEnabled {
+		t.Skip("timings mean nothing under the race detector")
+	}
 	words := strings.Fields("budget tracker garden recipe invoice travel notes export chart report household page csv plan draft " +
 		"letter résumé photo album workout schedule reading list movie script poem story essay grant budgeting")
 	ms := make([]*manifest.Manifest, 10000)
