@@ -39,7 +39,16 @@ func openCommand(goos, path string) (string, []string) {
 // and sessions/.
 func viewCopy(home, body, title, mimeType string) (string, error) {
 	name := sanitize(title)
-	if filepath.Ext(name) == "" {
+	// The extension comes from the MIME type. The title's own extension is
+	// kept only when the type lists it and it cannot run anything.
+	ext := strings.ToLower(filepath.Ext(name))
+	if allowed, _ := mime.ExtensionsByType(mimeType); !slices.Contains(allowed, ext) || runnable[ext] {
+		if runnable[ext] {
+			name = strings.TrimSuffix(name, filepath.Ext(name))
+		}
+		if name = strings.Trim(name, ".-"); name == "" {
+			name = "artifact"
+		}
 		name += extFor(mimeType)
 	}
 	hex := filepath.Base(body)
@@ -92,8 +101,25 @@ func sanitize(title string) string {
 	return s
 }
 
-// extFor picks a file extension for a MIME type, preferring the common one.
+// runnable extensions are never handed to the default handler, which may
+// run them instead of showing them.
+var runnable = map[string]bool{
+	".desktop": true, ".sh": true, ".bash": true, ".zsh": true, ".command": true, ".tool": true, ".app": true,
+	".exe": true, ".bat": true, ".cmd": true, ".com": true, ".ps1": true, ".msi": true, ".scr": true,
+	".jar": true, ".appimage": true, ".run": true, ".deb": true, ".rpm": true, ".pkg": true, ".dmg": true,
+}
+
+// extFor picks a file extension for a MIME type, preferring the common
+// one, and ".txt" for any type whose extension could run.
 func extFor(mimeType string) string {
+	ext := extForType(mimeType)
+	if runnable[ext] {
+		return ".txt"
+	}
+	return ext
+}
+
+func extForType(mimeType string) string {
 	exts, _ := mime.ExtensionsByType(mimeType)
 	for _, pref := range []string{".html", ".txt", ".md", ".json", ".jpg", ".svg"} {
 		if slices.Contains(exts, pref) {

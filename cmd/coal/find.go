@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
@@ -100,7 +101,7 @@ func printResults(w io.Writer, rs []index.Result, all []string, tty bool, now ti
 		if r.ArtifactCount != 1 {
 			count += "s"
 		}
-		rows[i] = []string{shortID(r.ID, all), truncate(oneLine(r.Summary), 60), r.Status, relTime(r.LastActivityAt, now), count}
+		rows[i] = []string{shortID(r.ID, all), truncate(oneLine(printable(r.Summary)), 60), printable(r.Status), relTime(r.LastActivityAt, now), count}
 		for j, c := range rows[i] {
 			widths[j] = max(widths[j], utf8.RuneCountInString(c))
 		}
@@ -109,7 +110,6 @@ func printResults(w io.Writer, rs []index.Result, all []string, tty bool, now ti
 	if tty {
 		bold, plain = "\x1b[1m", "\x1b[22m"
 	}
-	marks := strings.NewReplacer("<b>", bold, "</b>", plain)
 	for i, row := range rows {
 		var line strings.Builder
 		for j, c := range row {
@@ -120,7 +120,7 @@ func printResults(w io.Writer, rs []index.Result, all []string, tty bool, now ti
 		}
 		fmt.Fprintln(w, line.String())
 		if sn := rs[i].Snippet; sn != "" {
-			fmt.Fprintf(w, "          %s\n", html.UnescapeString(marks.Replace(oneLine(sn))))
+			fmt.Fprintf(w, "          %s\n", terminalSnippet(sn, bold, plain))
 		}
 	}
 }
@@ -128,6 +128,31 @@ func printResults(w io.Writer, rs []index.Result, all []string, tty bool, now ti
 // shortID returns the shortest prefix of id, at least 8 characters, that
 // no other id in all shares. UUIDv7 ids made in the same minute share
 // their first 8 characters, so a fixed 8 would not tell them apart.
+// printable drops control and format characters (escapes, carriage
+// returns, bidi overrides), so stored text cannot drive the terminal.
+// Newlines, carriage returns and tabs become spaces.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\t' || r == '\r':
+			return ' '
+		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// terminalSnippet turns an HTML-escaped snippet into terminal text. The
+// <b> markers become private-use runes (the index strips those from the
+// text it stores, so these are the only ones), the rest is unescaped once
+// and made printable, and only then do the markers become bold codes.
+func terminalSnippet(sn, bold, plain string) string {
+	s := strings.NewReplacer("<b>", "\ue000", "</b>", "\ue001").Replace(sn)
+	s = printable(html.UnescapeString(s))
+	return oneLine(strings.NewReplacer("\ue000", bold, "\ue001", plain).Replace(s))
+}
+
 func shortID(id string, all []string) string {
 	n := min(8, len(id))
 	for _, o := range all {

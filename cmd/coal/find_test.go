@@ -167,3 +167,22 @@ func TestGarbageIndexRecovers(t *testing.T) {
 	}
 	_ = id
 }
+
+func TestFindStripsTerminalControls(t *testing.T) {
+	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	rs := []index.Result{{
+		ID: "019a1111-2222-7333-8444-555555555555", Status: "active", LastActivityAt: "2026-11-04T11:00:00Z",
+		Summary: "evil \x1b]0;pwned\x07 title\r‮abc",
+		Snippet: "evil <b>budget</b> \x1b[2J &amp;#27; &lt;b&gt;x&lt;/b&gt;",
+	}}
+	var tty bytes.Buffer
+	printResults(&tty, rs, nil, true, now)
+	out := tty.String()
+	stripped := strings.NewReplacer("\x1b[1m", "", "\x1b[22m", "").Replace(out)
+	if strings.ContainsAny(stripped, "\x1b\x07\r‮") {
+		t.Fatalf("control characters reached the terminal: %q", out)
+	}
+	if !strings.Contains(out, "evil ]0;pwned title abc") || !strings.Contains(out, "evil \x1b[1mbudget\x1b[22m [2J &#27; <b>x</b>") {
+		t.Errorf("output %q", out)
+	}
+}
