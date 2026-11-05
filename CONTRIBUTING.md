@@ -4,7 +4,7 @@ Thanks for looking. COAL is being built in the open, and this page is about the 
 
 ## Where the project is
 
-COAL is pre-alpha. `main` holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). A proof of concept on the `poc/go` branch already runs the full end-to-end demo. It is not merged, and it is not packaged for others to run yet. The MVP is built in the plan's order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, the project continues to Phase 2, changes direction, or stops. The bar is in the README: if COAL does not get used unprompted at least five times that week, the project stops. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
+COAL is pre-alpha. `main` holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). A proof of concept on the `poc/go` branch, written in Go, runs the demo end to end from a recorded Claude Code session, not a live one. It has no `coal resume` yet, it does not build from a fresh clone, and it is not merged. It is a spike to test the design: the stack for the first release is the one in `CLAUDE.md` unless an ADR changes it. The MVP is built in the plan's order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, the project continues to Phase 2, changes direction, or stops. The bar is in the README: if COAL does not get used unprompted at least five times that week, the project stops. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
 
 ## What helps now
 

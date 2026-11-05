@@ -24,7 +24,7 @@ It runs on your machine. The record is a folder of JSON files you can read with 
 
 ## Status
 
-Pre-alpha, and being built in the open. `main` holds the spec, the decisions behind it, and the task list (`docs/05-MVP-TASKS.md`). A proof of concept on the [`poc/go`](https://github.com/calebtonn/coal/tree/poc/go) branch runs the full end-to-end demo: capture from Claude Code, find from the CLI and MCP, resume, and the web UI. It is not merged or packaged yet. If you want to follow along or help, read the spec, look through the proof of concept, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
+Pre-alpha, and being built in the open. `main` holds the spec, the decisions behind it, and the task list (`docs/05-MVP-TASKS.md`). A proof of concept on the [`poc/go`](https://github.com/calebtonn/coal/blob/poc/go/docs/poc/STATUS.md) branch, written in Go, runs the demo from a recorded Claude Code session: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and the web UI. It has not been run against a live session, it has no `coal resume` yet, and it does not build from a fresh clone. It is not merged. If you want to follow along or help, read the spec, look through the proof of concept, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
 
 ## Layout
 

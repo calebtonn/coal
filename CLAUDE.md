@@ -50,7 +50,7 @@ COAL is a local-first service that stores Intent Manifests (see `docs/04-INTENT-
 
 ## Commands
 
-These work once T01 (the monorepo scaffold) has landed. Until then there is no code to build or test.
+These work once T01 (the monorepo scaffold) has landed. Until then there is no code on `main` to build or test. The Go proof of concept on `poc/go` has its own Makefile and is not part of this plan.
 
 ```
 pnpm install
