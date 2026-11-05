@@ -10,7 +10,7 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 
 1. **Plain JSON.** No binary, no custom encoding. One manifest per file.
 2. **User's words first.** `intent.summary` should be the user's phrasing when available, not a model's paraphrase.
-3. **Artifacts are referenced by content hash.** A manifest remains valid when files move. The `uri` is a hint; the `hash` is the identity.
+3. **Artifacts with a uri are identified by (manifest, uri) and keep their history in versions[].** Artifacts without a uri are identified by content hash. The top-level hash always points at the latest version.
 4. **Provenance is mandatory.** Every manifest records which tool wrote it. A user can always answer "where did this come from."
 5. **Additive evolution.** New versions add optional fields. Readers must ignore unknown fields.
 6. **No secrets.** Manifests must not contain credentials, tokens, or session cookies. `sessionRef` is an opaque locator, never an auth token.
@@ -24,6 +24,7 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 | `$schema` | string | yes | `https://coalmine.io/schema/intent-manifest/0.1.json` |
 | `version` | string | yes | `"0.1"` |
 | `id` | string (UUIDv7) | yes | Stable identity |
+| `rev` | integer (1 or more) | no | Write revision. Incremented on every write. A writer passes back the `rev` it read and gets a conflict if it moved. |
 | `intent` | Intent | yes | |
 | `status` | enum | yes | `active` \| `paused` \| `done` \| `abandoned` |
 | `artifacts` | Artifact[] | yes (may be empty) | |
@@ -50,14 +51,27 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `hash` | string | yes | `sha256:<hex>` |
+| `hash` | string | yes | `sha256:<hex>` of the latest version |
 | `title` | string | yes | Human name |
 | `type` | enum | yes | `html` \| `code` \| `doc` \| `data` \| `image` \| `other` |
 | `mime` | string | yes | e.g. `text/html` |
-| `uri` | string | no | Original location (`file://`, `https://`) |
+| `uri` | string | no | Original location (`file://`, `https://`). When present, the manifest and `uri` together identify the artifact, and `versions` holds its history. |
+| `size` | integer | no | Bytes of the latest version |
+| `createdAt` | ISO 8601 | yes | When the latest version was recorded |
+| `producer` | Provenance | yes | Which tool produced the latest version (may differ from manifest provenance) |
+| `versions` | ArtifactVersion[] | no | Every recorded body, oldest first. At least one entry when present. The last entry matches the top-level `hash`, `size`, `createdAt` and `producer`. |
+| `skipped` | string | no | Why the body was not copied, for example a possible secret |
+
+Simple readers can ignore `versions` and use the top-level fields, which always describe the latest version.
+
+### ArtifactVersion
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `hash` | string | yes | `sha256:<hex>` |
 | `size` | integer | no | Bytes |
-| `createdAt` | ISO 8601 | yes | |
-| `producer` | Provenance | yes | Which tool produced this artifact (may differ from manifest provenance) |
+| `createdAt` | ISO 8601 | yes | When this version was recorded |
+| `producer` | Provenance | yes | Which tool produced this version |
 
 ### State
 
@@ -74,7 +88,7 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 |---|---|---|---|
 | `tool` | string | yes | e.g. `claude-code`, `claude.ai`, `cursor`, `coal-cli`, `human` |
 | `model` | string | no | e.g. `claude-opus-5-5` |
-| `sessionRef` | string | no | Opaque locator the tool can use to reopen the session |
+| `sessionRef` | string | no | Opaque locator the tool can use to reopen the session. The schema rejects values that start like common tokens (`Bearer `, `sk-`, `xoxb-`, `ghp_`, `github_pat_`, `AKIA`). |
 | `capturedBy` | string | no | The adapter that wrote the record, e.g. `coal-adapter-claude-code@0.1.0` |
 
 ### Link
