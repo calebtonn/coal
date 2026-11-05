@@ -242,6 +242,7 @@ GitHub issues stay open. Nothing is closed or commented on from this project.
 ## Working rules
 
 - Builders run on Claude Opus 5.5 and get one milestone each with this plan and the relevant docs as the brief. Design, review and merges stay with the lead on Fable 5.1.
+- Review gate (Dave, 2026-11-04): once there is a decent end-to-end build (M6 capture working with M3 to M5), a Fable 5.1 reviewer that did not write the code cross-checks the diff from `main`. Confirmed findings are fixed before the build is called done, and again before M8 is signed off. `poc/go` stays local; there is no push.
 - At most two builders at once; test suites run one at a time because this laptop also runs other CI.
 - All data under `.sandbox/`. Hooks are tested with recorded JSON and settings files inside the sandbox. Nothing writes to `~/.claude/` or `~/.coal/`.
 - No pushes, PRs, issue comments or workflow files. Commits go to `poc/go` only.
