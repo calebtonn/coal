@@ -1,6 +1,6 @@
 # COAL POC status
 
-Updated 2026-11-05. Branch `poc/go`, local only, never pushed. Data dir for all testing: `.sandbox/coal` (excluded from git).
+Updated 2026-11-05. Branch `poc/go`, pushed to `origin` on Dave's request (2026-11-05), not merged and no PR. Data dir for all testing: `.sandbox/coal` (excluded from git).
 
 ## Summary
 
@@ -42,6 +42,8 @@ Try it: `make demo`, or follow `docs/poc/DEMO.md`. The one thing not run is a li
   - Surfaces (U1 to U9): all fixed. The second pass found false positives in the new secret rules (Firebase pages, Ansible `hosts.yml`, test JWTs, SpinKit CSS) and no-op writes that stamped state. Fixed. PATCH and `coal_update_state` now share `manifest.StateChanged` (`4085e4e`).
   - Confirmed sound: 127.0.0.1-only binding, Host and Origin guards, the artifact sandbox in a real browser, UI escaping, FTS5 query building, rev compare-and-swap, and `intent.summary` protection.
 - Final check by the lead at `e1fb4be`: race suite, vet and gofmt clean; web 19 tests and svelte-check clean; `make demo` passes twice; `make e2e` passes; no servers left running.
+
+- Upstream moved: Caleb pushed `c6f371d` to `main` after this branch was cut. It merges PR #10, accepts ADR-011 to ADR-015, fixes #1 to #4 in the docs and adds ADR-016 (capture lifecycle and resume). ADR-016 matches what the POC built: SessionEnd queues, extraction fallback, a banner plus context for resume, marker-first matching. It also adds a `coal resume` launcher the POC does not have. A test merge of `poc/go` with `origin/main` conflicts in six doc files only (CLAUDE.md, README.md, docs/02, 03, 05, 06) and in no code. Resolving that is a choice for Dave and Caleb.
 
 ## In progress
 
