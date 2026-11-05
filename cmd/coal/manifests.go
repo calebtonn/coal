@@ -23,7 +23,7 @@ func openApp(arg string) (*app.App, string, error) {
 	if err != nil || arg == "" {
 		return a, "", err
 	}
-	id, err := a.Resolve(arg)
+	id, err := resolve(a, arg)
 	if err != nil {
 		a.Close()
 		return nil, "", err
