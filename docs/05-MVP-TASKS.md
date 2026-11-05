@@ -94,6 +94,11 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 
 ## Week 6: Demo and decision
 
+### T12b. Publish the schema at its id
+- Static site from the repo (GitHub Pages or similar) serving `spec/` at `https://coalmine.io/schema/`
+- coalmine.app redirects to coalmine.io
+- **Accept:** `curl https://coalmine.io/schema/intent-manifest/0.1.json` returns the committed schema byte for byte
+
 ### T13. Demo script and recording
 - Write `docs/DEMO.md`: exact steps, exact prompts
 - Record a 3 minute screen capture of the end-to-end demo

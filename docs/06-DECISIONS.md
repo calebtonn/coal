@@ -73,3 +73,11 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 **Decision.** `intent.summary` defaults to the user's own first message of the session. The model's proposals go to `intent.goal` and `state.summary`. `intent.source` records `user` or `model`. Search ranks user-written summaries first.
 
 **Consequences.** Some summaries will be rough ("build me a thing for the budget"). That is acceptable; it is what the user will search for. A later `coal rename` lets the user tighten a summary by hand.
+
+## ADR-010: Domains
+
+**Context.** Two domains were registered on 2026-11-04: coalmine.io and coalmine.app.
+
+**Decision.** coalmine.io is the standard: the published schema (`/schema/intent-manifest/<version>.json`), the spec, the docs and the project site. coalmine.app is reserved for anything that runs: the hosted MCP endpoint, sync, or an API, if and when any of those exist. Package names, the CLI and the data directory stay `coal`.
+
+**Consequences.** The schema `$id` is `https://coalmine.io/schema/intent-manifest/0.1.json` and must be served at that path once the site is up (Phase 1 task). In Phase 1 nothing runs on coalmine.app; it redirects to coalmine.io. Registering the domain is not a reason to host anything before the Phase 1 retro.
