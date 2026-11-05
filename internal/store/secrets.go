@@ -24,34 +24,37 @@ const MaxBody = 5 << 20
 // deniedNames are file name patterns that are never copied.
 var deniedNames = []string{
 	".env", ".env.*", "*.env", ".envrc", "*.pem", "*.key", "id_rsa*", "id_ed25519*", "id_ecdsa*", "id_dsa*",
-	"credentials*", "*.p12", "*.pfx", ".netrc", ".npmrc", ".pypirc", ".git-credentials", "hosts.yml",
+	"*credentials*", "*.p12", "*.pfx", ".netrc", ".npmrc", ".pypirc", ".git-credentials",
 	"*.kdbx", ".pgpass", "*.jks", "*.keystore",
 }
 
 // sensitiveDirs, under the home directory, and sensitiveRoots are never
 // read at all: everything below them is skipped.
 var (
-	sensitiveDirs  = []string{".ssh", ".aws", ".config/gh", ".kube", ".docker", ".gnupg", ".password-store"}
+	sensitiveDirs = []string{".ssh", ".aws", ".config/gh", ".kube", ".docker", ".gnupg", ".password-store",
+		".mozilla", ".config/google-chrome", ".config/chromium", ".config/BraveSoftware", ".local/share/keyrings", ".claude"}
 	sensitiveRoots = []string{"/etc", "/proc", "/sys"}
 )
 
 // tokenRules are body patterns that look like credentials. The rule
 // name is recorded; the matched text never is.
+// Rules with notInTests do not apply to test and fixture files, which
+// often carry sample tokens on purpose.
 var tokenRules = []struct {
-	name string
-	re   *regexp.Regexp
+	name       string
+	re         *regexp.Regexp
+	notInTests bool
 }{
-	{"sk- key", regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{20,}`)},
-	{"Slack token", regexp.MustCompile(`\b(xox[abps]-|xapp-[A-Za-z0-9-]{10,})`)},
-	{"GitHub token", regexp.MustCompile(`\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_)`)},
-	{"GitLab token", regexp.MustCompile(`\bglpat-[A-Za-z0-9_-]{20,}`)},
-	{"npm token", regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}`)},
-	{"PyPI token", regexp.MustCompile(`\bpypi-[A-Za-z0-9_-]{50,}`)},
-	{"Google API key", regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}`)},
-	{"AWS access key", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}`)},
-	{"JWT", regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`)},
-	{"netrc password", regexp.MustCompile(`(?m)(\bmachine\s+\S+.*\s|^\s*)password\s+\S+\s*$`)},
-	{"private key", regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`)},
+	{"sk- key", regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{20,}`), false},
+	{"Slack token", regexp.MustCompile(`\b(xox[abps]-|xapp-[A-Za-z0-9-]{10,})`), false},
+	{"GitHub token", regexp.MustCompile(`\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_)`), false},
+	{"GitLab token", regexp.MustCompile(`\bglpat-[A-Za-z0-9_-]{20,}`), false},
+	{"npm token", regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}`), false},
+	{"PyPI token", regexp.MustCompile(`\bpypi-[A-Za-z0-9_-]{50,}`), false},
+	{"AWS access key", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}`), false},
+	{"JWT", regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`), true},
+	{"netrc password", regexp.MustCompile(`(?m)(\bmachine\s+\S+.*\s|^\s*)password\s+\S+\s*$`), false},
+	{"private key", regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`), false},
 }
 
 // sensitiveLocation returns a skipped note when any of the paths lies in
@@ -94,12 +97,48 @@ func secretRule(in ArtifactInput, body []byte, names ...string) string {
 			}
 		}
 	}
+	inTests := isTestPath(in)
 	for _, r := range tokenRules {
+		if r.notInTests && inTests {
+			continue
+		}
 		if r.re.Match(body) {
 			return "possible secret: " + r.name
 		}
 	}
 	return ""
+}
+
+var (
+	testNames = []string{"*_test.*", "*.test.*", "*.spec.*"}
+	testDirs  = map[string]bool{"testdata": true, "fixtures": true, "__fixtures__": true, "__tests__": true}
+)
+
+// isTestPath reports whether the artifact's path or uri names a test or
+// fixture file: a base name like *_test.*, *.test.* or *.spec.*, or a
+// directory segment named testdata, fixtures, __fixtures__ or __tests__.
+func isTestPath(in ArtifactInput) bool {
+	paths := []string{filepath.ToSlash(in.Path), in.Title}
+	if u, err := url.Parse(in.URI); err == nil {
+		paths = append(paths, u.Path)
+	}
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		segs := strings.Split(p, "/")
+		for _, seg := range segs[:len(segs)-1] {
+			if testDirs[seg] {
+				return true
+			}
+		}
+		for _, pat := range testNames {
+			if ok, _ := path.Match(pat, segs[len(segs)-1]); ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // blindHash returns "sha256:" + HMAC-SHA256(salt, r) for a body that is

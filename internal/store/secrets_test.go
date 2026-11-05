@@ -23,7 +23,7 @@ func register(t *testing.T, s *Store, id, dir, name, body string) string {
 func TestDeniedNames(t *testing.T) {
 	s, m := setup(t)
 	dir := t.TempDir()
-	for _, name := range []string{".netrc", ".npmrc", ".pypirc", ".envrc", "prod.env", ".git-credentials", "hosts.yml",
+	for _, name := range []string{".netrc", ".npmrc", ".pypirc", ".envrc", "prod.env", ".git-credentials", ".credentials.json", "aws_credentials",
 		"id_ecdsa", "id_dsa.pub", "vault.kdbx", ".pgpass", "release.jks", "app.keystore"} {
 		if got := register(t, s, m.ID, dir, name, "harmless text"); !strings.Contains(got, "file name matches") {
 			t.Errorf("%s: skipped %q", name, got)
@@ -44,7 +44,6 @@ func TestTokenRules(t *testing.T) {
 		"PyPI token":     "password = pypi-" + r("A", 60),
 		"GitLab token":   "glpat-" + r("z", 20),
 		"Slack token":    "SLACK_APP=xapp-1-A0123456789-abcdef",
-		"Google API key": "key=AIza" + r("9", 35),
 		"JWT":            "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnopqrstu",
 		"netrc password": "machine example.com login me password hunter2-secret\n",
 	} {
@@ -64,6 +63,37 @@ func TestTokenRules(t *testing.T) {
 	late := strings.Repeat("x", 3<<20) + "\nAKIAABCDEFGHIJKLMNOP\n"
 	if got := register(t, s, m.ID, dir, "late.txt", late); got != "possible secret: AWS access key" {
 		t.Errorf("token after 3 MiB: %q", got)
+	}
+}
+
+func TestReviewTwoFalsePositives(t *testing.T) {
+	s, m := setup(t)
+	dir := t.TempDir()
+	// F1: a page with a Firebase config is an ordinary page, and is stored.
+	page := `<script>const firebaseConfig = { apiKey: "AIza` + strings.Repeat("9", 35) + `", authDomain: "x.firebaseapp.com" };</script>`
+	if got := register(t, s, m.ID, dir, "index.html", page); got != "" {
+		t.Errorf("Firebase page skipped: %q", got)
+	}
+	// F2: an Ansible inventory named hosts.yml is stored.
+	if got := register(t, s, m.ID, dir, "inventory/hosts.yml", "all:\n  hosts:\n    web1:\n"); got != "" {
+		t.Errorf("hosts.yml skipped: %q", got)
+	}
+	// F2: JWTs in tests and fixtures are samples; elsewhere they are secrets.
+	jwt := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnopqrstu"
+	for _, name := range []string{"auth_test.go", "auth.test.ts", "login.spec.js", "testdata/token.txt",
+		"fixtures/a.json", "src/__fixtures__/b.json", "src/__tests__/c.js"} {
+		if got := register(t, s, m.ID, dir, name, "token = "+jwt); got != "" {
+			t.Errorf("%s: JWT sample skipped: %q", name, got)
+		}
+	}
+	for _, name := range []string{"auth.go", "testing/notes.txt", "contest.md"} {
+		if got := register(t, s, m.ID, dir, name, "token = "+jwt); got != "possible secret: JWT" {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+	// Other token rules still apply in tests.
+	if got := register(t, s, m.ID, dir, "x_test.go", "AKIAABCDEFGHIJKLMNOP"); got != "possible secret: AWS access key" {
+		t.Errorf("AWS key in a test file: %q", got)
 	}
 }
 
@@ -109,8 +139,11 @@ func TestSymlinksAndSensitiveDirs(t *testing.T) {
 			t.Errorf("%s: %+v", p, a)
 		}
 	}
-	if got := register(t, s, m.ID, filepath.Join(home, ".config", "gh"), "hosts.txt", "x"); got != "sensitive location: ~/.config/gh" {
-		t.Errorf("~/.config/gh: %q", got)
+	for _, d := range []string{".config/gh", ".mozilla", ".config/google-chrome", ".config/chromium",
+		".config/BraveSoftware", ".local/share/keyrings", ".claude"} {
+		if got := register(t, s, m.ID, filepath.Join(home, d), "profile/data.txt", "x"); got != "sensitive location: ~/"+d {
+			t.Errorf("~/%s: %q", d, got)
+		}
 	}
 	a, err = s.RegisterArtifact(m.ID, ArtifactInput{Path: "/proc/self/status"}, Op{})
 	must(t, err)
