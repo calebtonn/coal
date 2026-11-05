@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -375,15 +374,13 @@ type UpdateInput struct {
 	Rev           *int     `json:"rev,omitempty" jsonschema:"the rev you read with coal_get; the update fails if the manifest changed since"`
 }
 
-// normState copies st with an empty openQuestions list as nil, so [] and
-// absent compare equal and are stored the same way.
-func normState(st manifest.State) manifest.State {
-	if len(st.OpenQuestions) == 0 {
-		st.OpenQuestions = nil
-	} else {
-		st.OpenQuestions = slices.Clone(st.OpenQuestions)
-	}
-	return st
+// stateChanged is the daemon's rule (daemon.StateChanged), mirrored so
+// this package does not import the daemon: nextStep, summary or
+// openQuestions differ, with nil and [] equal. lastActivityAt and Extra
+// are ignored.
+func stateChanged(before, after manifest.State) bool {
+	return before.NextStep != after.NextStep || before.Summary != after.Summary ||
+		!slices.Equal(before.OpenQuestions, after.OpenQuestions)
 }
 
 // stampTool names the writer in the state stamp: the client name, or
@@ -414,12 +411,17 @@ func (s *server) updateState(_ context.Context, req *mcp.CallToolRequest, in Upd
 		return fail(err)
 	}
 	m, err := s.app.Update(id, rev, func(m *manifest.Manifest) error {
-		status, goal, state := m.Status, m.Intent.Goal, normState(m.State)
+		status, goal, state := m.Status, m.Intent.Goal, m.State
+		state.OpenQuestions = slices.Clone(state.OpenQuestions)
 		if in.NextStep != nil {
 			m.State.NextStep = strings.TrimSpace(*in.NextStep)
 		}
 		if in.OpenQuestions != nil {
+			// An empty list clears the field rather than storing [].
 			m.State.OpenQuestions = in.OpenQuestions
+			if len(m.State.OpenQuestions) == 0 {
+				m.State.OpenQuestions = nil
+			}
 		}
 		if in.Summary != nil {
 			m.State.Summary = strings.TrimSpace(*in.Summary)
@@ -433,15 +435,14 @@ func (s *server) updateState(_ context.Context, req *mcp.CallToolRequest, in Upd
 		// The same rule as PATCH: only a real change counts. Capture
 		// reads the stamp to skip its session-end fallback, so a no-op
 		// call must not leave one.
-		m.State = normState(m.State)
-		stateChanged := !reflect.DeepEqual(state, m.State)
-		if !stateChanged && status == m.Status && goal == m.Intent.Goal {
+		changed := stateChanged(state, m.State)
+		if !changed && status == m.Status && goal == m.Intent.Goal {
 			return store.ErrNoChange
 		}
-		if stateChanged || status != m.Status {
+		if changed || status != m.Status {
 			m.State.LastActivityAt = manifest.Now()
 		}
-		if stateChanged {
+		if changed {
 			manifest.StampState(m, stampTool(req))
 		}
 		return nil

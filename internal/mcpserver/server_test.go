@@ -330,6 +330,34 @@ func TestUpdateStateOnlyRealChanges(t *testing.T) {
 	if _, ok := manifest.StateStampOf(&got); ok {
 		t.Error("goal-only update stamped state")
 	}
+
+	// A status change alone bumps activity but does not stamp.
+	f.call("coal_update_state", map[string]any{"id": rec.ID, "status": "paused"}, &got)
+	if got.Status != "paused" || got.State.LastActivityAt == "2026-01-01T00:00:00Z" {
+		t.Errorf("status-only: %s, activity %s", got.Status, got.State.LastActivityAt)
+	}
+	if _, ok := manifest.StateStampOf(&got); ok {
+		t.Error("status-only update stamped state")
+	}
+}
+
+func TestStateChangedRule(t *testing.T) {
+	base := manifest.State{LastActivityAt: "a", NextStep: "n", Summary: "s"}
+	cases := []struct {
+		after manifest.State
+		want  bool
+	}{
+		{manifest.State{LastActivityAt: "b", NextStep: "n", Summary: "s", OpenQuestions: []string{}}, false},
+		{manifest.State{NextStep: "n", Summary: "s", Extra: map[string]json.RawMessage{"x": json.RawMessage("1")}}, false},
+		{manifest.State{NextStep: "m", Summary: "s"}, true},
+		{manifest.State{NextStep: "n", Summary: "t"}, true},
+		{manifest.State{NextStep: "n", Summary: "s", OpenQuestions: []string{"q"}}, true},
+	}
+	for i, c := range cases {
+		if got := stateChanged(base, c.after); got != c.want {
+			t.Errorf("case %d: got %v, want %v", i, got, c.want)
+		}
+	}
 }
 
 func TestReadSkippedArtifact(t *testing.T) {
