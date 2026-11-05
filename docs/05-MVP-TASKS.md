@@ -119,4 +119,4 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 - Policy engine, interrupt gating, Slack and calendar signals
 - Sync, encryption, accounts, teams
 - Published npm packages under a real org
-- Website for the spec
+- Anything beyond serving `spec/` at `https://coalmine.io/schema/` (T12b); a full website for the spec waits

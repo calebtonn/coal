@@ -153,8 +153,8 @@ Storage is file-first. The ER diagram describes the shape, not a relational sche
 
 ```mermaid
 flowchart LR
-    P1["Phase 1: Index<br/>capture + find + resume<br/>(this MVP)"]
-    P2["Phase 2: Reach<br/>browser capture (claude.ai, chatgpt.com)<br/>semantic search"]
+    P1["Phase 1: Record<br/>capture + find + resume<br/>(this MVP)"]
+    P2["Phase 2: Reach<br/>Cursor and Codex adapters, coal import<br/>chat apps, semantic search"]
     P3["Phase 3: Attention<br/>policy engine, interrupt gating<br/>Slack + calendar + IDE presence"]
     P4["Phase 4: Portability<br/>encrypted sync, export,<br/>spec v1.0 with other implementers"]
     P1 --> P2 --> P3 --> P4

@@ -29,7 +29,7 @@ Everything on the original whiteboard (sense, model, decide, act; interrupt gati
 The useful map is the one from cognitive science, because that is how people in this space will place it on first read:
 
 - Semantic: what is true about you. Facts, preferences, observations. Mem0 OpenMemory, Hindsight, and the platforms' built-in memory live here. Graphiti (Zep) is here too, as a temporal knowledge graph of entities and relations extracted from ingested text.
-- Procedural: how to do things. Skills files, OpenPortable's skills and handoff notes.
+- Procedural: how to do things. Skills files, `CLAUDE.md` and `AGENTS.md`, handoff notes.
 - Episodic: what happened and what you made. The work itself, with its intent, its artifacts and where it stands. Nobody holds this in a form the user owns and other tools can read.
 
 COAL is the episodic one. It does not compete with the semantic stores; it sits beside them, and a later adapter may read preferences from one to improve summaries and surfacing. Graphiti's "episode" is an ingested message that gets decomposed into facts. COAL's episode is the work product, kept whole, content-addressed, with provenance and a next step. That difference is the whole project.

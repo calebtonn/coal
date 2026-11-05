@@ -60,7 +60,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-008: COAL is a record of work, not a memory
 
-**Context.** Mem0 OpenMemory, OpenPortable, and the platforms' built-in memory all store facts, preferences, or session notes across tools. Positioning COAL as "memory" invites a direct comparison on their terms and loses.
+**Context.** Mem0 OpenMemory and the platforms' built-in memory store facts, preferences, or session notes across tools. Positioning COAL as "memory" invites a direct comparison on their terms and loses.
 
 **Decision.** COAL stores what the user made, why, and what is still open: intent, content-addressed artifacts with provenance, open loops, and contexts. It does not store facts about the user. It is designed to sit on top of a fact store rather than replace one; a future adapter may read user preferences from OpenMemory to improve summaries and surfacing.
 
