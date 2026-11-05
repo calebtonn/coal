@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime"
 	"net/url"
@@ -57,13 +58,38 @@ func (s *Store) RegisterArtifact(manifestID string, in ArtifactInput, op Op) (*m
 	} else if err != nil {
 		return nil, err
 	}
-	body := in.Content
+	// Work out the body, or why it is not copied. skipSource is what the
+	// blind hash covers when there is no body to read.
+	body, skipped, realName := in.Content, "", ""
+	var skipSource io.Reader
+	if len(body) > MaxBody {
+		skipped = "too large"
+	}
 	if in.Path != "" {
 		abs, err := filepath.Abs(in.Path)
 		if err != nil {
 			return nil, err
 		}
-		if body, err = os.ReadFile(abs); err != nil {
+		real, err := filepath.EvalSymlinks(abs)
+		if err != nil {
+			return nil, err
+		}
+		realName = filepath.Base(real)
+		if skipped = sensitiveLocation(abs, real); skipped != "" {
+			skipSource = strings.NewReader("path:" + real) // never read the file
+		} else if st, err := os.Stat(real); err != nil {
+			return nil, err
+		} else if !st.Mode().IsRegular() {
+			return nil, fmt.Errorf("%s is not a regular file", in.Path)
+		} else if st.Size() > MaxBody {
+			skipped = "too large"
+			f, err := os.Open(real)
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+			skipSource = f
+		} else if body, err = os.ReadFile(real); err != nil {
 			return nil, err
 		}
 		if in.URI == "" {
@@ -89,16 +115,29 @@ func (s *Store) RegisterArtifact(manifestID string, in ArtifactInput, op Op) (*m
 	in.Producer.Tool = or(in.Producer.Tool, or(op.Tool, "coal"))
 	op.Action = or(op.Action, "register artifact "+in.Title)
 
-	sum := sha256.Sum256(body)
-	hexHash := hex.EncodeToString(sum[:])
-	size := int64(len(body))
-	skipped := secretRule(in, body)
 	if skipped == "" {
+		skipped = secretRule(in, body, realName)
+	}
+	v := manifest.ArtifactVersion{CreatedAt: manifest.Now(), Producer: in.Producer, Skipped: skipped}
+	if skipped == "" {
+		sum := sha256.Sum256(body)
+		hexHash := hex.EncodeToString(sum[:])
 		if err := s.storeBody(hexHash, body); err != nil {
 			return nil, err
 		}
+		size := int64(len(body))
+		v.Hash, v.Size = "sha256:"+hexHash, &size
+	} else {
+		// No real hash or size for a body that was not copied.
+		if skipSource == nil {
+			skipSource = bytes.NewReader(body)
+		}
+		h, err := s.blindHash(skipSource)
+		if err != nil {
+			return nil, err
+		}
+		v.Hash = h
 	}
-	v := manifest.ArtifactVersion{Hash: "sha256:" + hexHash, Size: &size, CreatedAt: manifest.Now(), Producer: in.Producer, Skipped: skipped}
 
 	var out manifest.Artifact
 	_, err := s.Update(manifestID, 0, func(m *manifest.Manifest) error {
@@ -195,42 +234,4 @@ func (s *Store) ReadArtifact(hash string) ([]byte, error) {
 		return os.ReadFile(p)
 	}
 	return nil, fmt.Errorf("%q is not a sha256 artifact hash", hash)
-}
-
-// deniedNames are file name patterns that are never copied.
-var deniedNames = []string{".env", ".env.*", "*.pem", "*.key", "id_rsa*", "id_ed25519*", "credentials*", "*.p12", "*.pfx"}
-
-// tokenRules are body patterns that look like credentials. The rule
-// name is recorded; the matched text never is.
-var tokenRules = []struct {
-	name string
-	re   *regexp.Regexp
-}{
-	{"sk- key", regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{20,}`)},
-	{"Slack token", regexp.MustCompile(`\bxox[abps]-`)},
-	{"GitHub token", regexp.MustCompile(`\b(ghp_[A-Za-z0-9]{20,}|github_pat_)`)},
-	{"AWS access key", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}`)},
-	{"private key", regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`)},
-}
-
-// secretRule returns a skipped note, or "" when the artifact looks safe.
-func secretRule(in ArtifactInput, body []byte) string {
-	names := []string{filepath.Base(in.Path), path.Base(in.Title)}
-	if u, err := url.Parse(in.URI); err == nil {
-		names = append(names, path.Base(u.Path))
-	}
-	for _, n := range names {
-		for _, pat := range deniedNames {
-			if ok, _ := path.Match(pat, strings.ToLower(n)); ok {
-				return "possible secret: file name matches " + pat
-			}
-		}
-	}
-	sample := body[:min(len(body), 1<<20)] // first 1 MB
-	for _, r := range tokenRules {
-		if r.re.Match(sample) {
-			return "possible secret: " + r.name
-		}
-	}
-	return ""
 }

@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -66,6 +67,9 @@ func WithHistory(on bool) Option { return func(s *Store) { s.history = on } }
 type Store struct {
 	dir     string
 	history bool
+
+	saltMu  sync.Mutex
+	saltVal []byte
 }
 
 // Open ensures the data directory layout and returns a store for it.

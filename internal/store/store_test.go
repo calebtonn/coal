@@ -1,6 +1,7 @@
 package store
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -132,8 +133,10 @@ func TestSecretsSkipped(t *testing.T) {
 		must(t, os.WriteFile(p, []byte(body), 0o600))
 		a, err := s.RegisterArtifact(m.ID, ArtifactInput{Path: p}, Op{})
 		must(t, err)
+		real := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(body)))
 		if !strings.HasPrefix(a.Skipped, "possible secret: ") || a.Versions[0].Skipped != a.Skipped ||
-			*a.Size != int64(len(body)) || strings.Contains(a.Skipped, "AKIAAB") {
+			a.Size != nil || a.Versions[0].Size != nil || a.Hash == real || !strings.HasPrefix(a.Hash, "sha256:") ||
+			strings.Contains(a.Skipped, "AKIAAB") {
 			t.Fatalf("%s: %+v", name, a)
 		}
 	}
