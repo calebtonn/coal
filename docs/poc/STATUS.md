@@ -23,5 +23,5 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 ## Notes for a restart
 
 - Go is at `~/.local/go/bin`; the Makefile adds it to PATH.
-- pnpm is not installed; the web UI uses npm unless pnpm gets installed through corepack.
+- The web UI uses Svelte 5 with `@davenicoll/web-framework` from the sibling checkout `../web-framework`, installed with Bun (Dave, 2026-11-04). pnpm is not needed.
 - A live Claude Code run would use Dave's account, so it stays optional and waits for his go-ahead. Recorded hook payloads under `testdata/claude-code/` are the test path.

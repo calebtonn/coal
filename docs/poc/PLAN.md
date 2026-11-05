@@ -27,8 +27,8 @@ One working end-to-end demo, all local and sandboxed:
 | Index | `modernc.org/sqlite` (pure Go), FTS5 with the porter tokenizer, rebuildable from `manifests/` |
 | Schema | Hand-written JSON Schema 2020-12 in `spec/intent-manifest.schema.json`, validated with `github.com/santhosh-tekuri/jsonschema/v6` in Go and Ajv in the UI |
 | Storage | JSON files under the data dir, which is a local git repo committed after each write (ADR-014) |
-| Web UI | Vite + React + TypeScript under `web/`, built into the binary with `go:embed` |
-| Tests | `go test`, Vitest for the UI |
+| Web UI | Svelte 5 + Vite + TypeScript under `web/`, using Dave's `@davenicoll/web-framework` (Tailwind v4, daisyUI 5, lucide icons) as a local path dependency on the sibling checkout `../web-framework`, built with Bun and embedded with `go:embed` |
+| Tests | `go test`, Vitest with jsdom and testing-library for the UI |
 
 The TypeScript workspace files from the original scaffold (`package.json`, `pnpm-workspace.yaml`, `packages/`) stay untouched. The POC lives beside them.
 
@@ -46,7 +46,7 @@ internal/capture/              the capture contract (ADR-011) and the Claude Cod
 internal/marker/               the .coal marker and session-to-manifest matching
 internal/daemon/               HTTP API and static UI
 internal/mcpserver/            MCP tools and resource
-web/                           Vite + React UI; web/embed.go embeds web/dist
+web/                           Svelte 5 UI on @davenicoll/web-framework; web/embed.go embeds web/dist
 docs/poc/                      PLAN.md, STATUS.md, DEMO.md
 ```
 
@@ -177,10 +177,11 @@ Each milestone is one builder task, under 1000 changed lines excluding generated
 
 ### M7. Web UI
 
-- `web/`: search box, results list (summary, status, relative time, artifact count), detail pane with artifact tabs, HTML in a sandboxed iframe, code in `<pre>`, a validity badge from Ajv against `/api/schema`
+- `web/`: a Svelte 5 app on `@davenicoll/web-framework` (Dave's request, 2026-11-04). Dependency `"@davenicoll/web-framework": "file:../../web-framework"` on the sibling checkout at `/home/dave/Source/davenicoll/web-framework`, installed with Bun. Toolchain per that repo's README: `svelte`, `@sveltejs/vite-plugin-svelte`, `tailwindcss`, `@tailwindcss/vite`, `daisyui`, `@lucide/svelte`, `typescript@~5.9`, `svelte-check`, and `themeInitPlugin()` in the Vite config
+- Layout: `AppShell` with `TopNav` carrying `ThemeSelect` and `ThemeToggle`; a `Page` with the search `Input` and a results `Table` or list (summary, status `Badge`, relative time, artifact count); a detail `Card` with `Tabs` for artifacts, HTML in a sandboxed iframe, code in `<pre>`, and a validity `Badge` from Ajv against `/api/schema`. No "memory" in any copy
 - `/` focuses search, arrow keys move selection, Enter opens
-- Embedded with `go:embed`; `web/dist` is ignored by git except a `.gitkeep`; the daemon serves a plain "run make web" page when the build is missing
-- Tests: Vitest for the search and detail components; a Go test confirms `/` serves the built `index.html` when present
+- Embedded with `go:embed`; `web/dist` is ignored by git except a `.gitkeep`; the daemon serves a plain "run make web" page when the build is missing. Vite `base` is `/` and the dev server proxies `/api` to `127.0.0.1:4242`
+- Tests: Vitest with jsdom for the search and detail components, `svelte-check` clean; a Go test confirms `/` serves the built `index.html` when present
 - Accept: `make web && make build` then `coal serve` shows the manifest with the HTML preview
 - Demo: `make dev` then open `http://127.0.0.1:4242`
 
@@ -205,3 +206,4 @@ Each milestone is one builder task, under 1000 changed lines excluding generated
 - All data under `.sandbox/`. Hooks are tested with recorded JSON and settings files inside the sandbox. Nothing writes to `~/.claude/` or `~/.coal/`.
 - No pushes, PRs, issue comments or workflow files. Commits go to `poc/go` only.
 - Stop processes by PID. No `rm -rf` outside `.sandbox/`, `web/dist` and `web/node_modules`.
+- The sibling `web-framework` checkout is read only. Nothing in it is edited or pushed from this project.
