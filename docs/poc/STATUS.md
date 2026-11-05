@@ -27,6 +27,9 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 
 - End-to-end check by the lead from a fresh sandbox at `85e5f23`: replayed session gives one manifest in the user's words with the HTML artifact, the `.coal` marker and next step "add CSV export"; `coal find`, MCP `coal_find` and `/api/manifests` all return it; the second session start prints the resume line; the daemon serves the artifact with `Content-Security-Policy: sandbox`. Full Go suite and vet pass.
 
+- Lead's check after the review fixes, at `d12d429`: all 14 Go packages pass under `-race`; vet and gofmt clean; `make demo` passes all five definition-of-done steps twice in a row; `make e2e` passes in headless Chromium with no CSP violations; no servers left running.
+- Fable second pass on capture: 9 of 12 fixed at once, the rest fixed in `e99db5c` (dotfiles home repo regression, resumed-session start time, narrowed wrapper-tag rule) and in the storage commits (deny-list, history is manifests/ only).
+
 ## In progress
 
 - Fable 5.1 review gate on frozen worktree `.sandbox/review-85e5f23`. All three reviews are in. Findings and owners:
@@ -34,7 +37,7 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
   - Storage (S1 to S10, builder on M3): fixed, see the storage line under Done. One high. Unknown fields nested below the top level, including `artifacts[].ext`, were dropped on rewrite. Medium: a corrupt `index.db` blocked every command; stale cross-process upserts; raw URI comparison.
   - Surfaces (U1 to U9, builders on M4 and M5): the secret guard was too narrow, and every reviewer found this. One MCP description named a type value the schema rejects. Several lows. Network binding, Host and Origin guards, the artifact sandbox, UI escaping and PATCH or MCP summary protection were confirmed sound.
   - Shared state stamp for C6 added by the lead (`ff0c439`).
-  - After the fixes land: a second Fable pass on the fixed findings, then `make demo` twice and `make e2e`.
+  - Second Fable pass on storage and surfaces running on frozen worktree `.sandbox/review3-d12d429`.
 
 - Nothing.
 
