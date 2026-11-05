@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -36,30 +37,59 @@ func TestOpen(t *testing.T) {
 	out := coal(t, home, "add", "--intent", "Household budget tracker", "--artifact", page, "--artifact", notes, "--artifact", env)
 	id := strings.Fields(out)[len(strings.Fields(out))-1] // stderr notes the skipped .env first
 
-	// HTML: copied to tmp/<hex>.html, and that copy is what gets opened.
+	hexOf := func(i int) string {
+		var m struct{ Artifacts []struct{ Hash string } }
+		json.Unmarshal([]byte(coal(t, home, "show", id)), &m)
+		return strings.TrimPrefix(m.Artifacts[i].Hash, "sha256:")
+	}
+	tmp := filepath.Join(home, "tmp")
+
+	// Every artifact opens as a copy in tmp/, named <hex8>-<title>.
 	got := strings.TrimSpace(coal(t, home, "open", id[:13]))
-	if len(ran) != 2 || ran[1] != got || filepath.Dir(got) != filepath.Join(home, "tmp") || filepath.Ext(got) != ".html" {
-		t.Fatalf("ran %q, printed %q", ran, got)
+	if want := filepath.Join(tmp, hexOf(0)[:8]+"-budget.html"); got != want || len(ran) != 2 || ran[1] != want {
+		t.Fatalf("ran %q, printed %q, want %s", ran, got, want)
 	}
+	os.WriteFile(got, []byte("edited in a viewer"), 0o600)
+	coal(t, home, "open", id)
 	if body, _ := os.ReadFile(got); string(body) != "<h1>Budget</h1>" {
-		t.Errorf("opened %q", body)
+		t.Errorf("copy not refreshed: %q", body)
 	}
-	// Anything else opens the stored body in place.
-	got = strings.TrimSpace(coal(t, home, "open", id, "--artifact", "1"))
-	if ran[1] != got || filepath.Dir(got) != filepath.Join(home, "artifacts") {
-		t.Errorf("ran %q, printed %q", ran, got)
+	if body, _ := os.ReadFile(filepath.Join(home, "artifacts", hexOf(0))); string(body) != "<h1>Budget</h1>" {
+		t.Errorf("store body changed: %q", body)
+	}
+	got = strings.TrimSpace(coal(t, home, "open", id, "--artifact", "2"))
+	if want := filepath.Join(tmp, hexOf(1)[:8]+"-notes.txt"); got != want {
+		t.Errorf("artifact 2 opened %q, want %s", got, want)
 	}
 
-	for args, want := range map[string]string{"2": "has no stored body", "3": "takes 0 to 2", "-1": "takes 0 to 2"} {
+	for args, want := range map[string]string{"3": "has no stored body", "4": "takes 1 to 3", "0": "takes 1 to 3"} {
 		ran = nil
-		var errOut strings.Builder
 		root := rootCmd()
 		root.SetOut(&strings.Builder{})
-		root.SetErr(&errOut)
+		root.SetErr(&strings.Builder{})
 		root.SetArgs([]string{"--home", home, "open", id, "--artifact", args})
 		err := root.Execute()
 		if err == nil || ran != nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("open --artifact %s: err=%v ran=%q", args, err, ran)
+		}
+	}
+}
+
+func TestViewCopyName(t *testing.T) {
+	home := t.TempDir()
+	body := filepath.Join(t.TempDir(), "0123456789abcdef")
+	os.WriteFile(body, []byte("x"), 0o600)
+	for _, c := range []struct{ title, mime, want string }{
+		{"budget.html", "text/html", "01234567-budget.html"},
+		{"Budget tracker", "text/html; charset=utf-8", "01234567-Budget-tracker.html"},
+		{"notes", "text/plain", "01234567-notes.txt"},
+		{"../../etc/passwd", "text/plain", "01234567-etc-passwd.txt"},
+		{"", "application/octet-stream", "01234567-artifact.bin"},
+		{"..", "", "01234567-artifact"},
+	} {
+		got, err := viewCopy(home, body, c.title, c.mime)
+		if err != nil || got != filepath.Join(home, "tmp", c.want) {
+			t.Errorf("viewCopy(%q, %q) = %q, %v; want %s", c.title, c.mime, got, err, c.want)
 		}
 	}
 }

@@ -1,12 +1,16 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"mime"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 )
@@ -27,18 +31,19 @@ func openCommand(goos, path string) (string, []string) {
 	return "xdg-open", []string{path}
 }
 
-// withExtension returns a path the default handler can recognise. Bodies
-// are stored without an extension, so an HTML body is copied once to
-// tmp/<hex>.html in the data directory (scratch, not history). Other
-// bodies are opened in place.
-func withExtension(home, body, typ, mime string) (string, error) {
-	if typ != "html" && !strings.HasPrefix(mime, "text/html") {
-		return body, nil
+// viewCopy copies a stored body to tmp/<hex8>-<title> in the data
+// directory and returns that path. Viewers get the copy, never the
+// content-addressed original, and the name carries an extension (from
+// the MIME type when the title has none) so the default handler knows
+// the type. tmp/ is scratch; the store's history covers only manifests/
+// and sessions/.
+func viewCopy(home, body, title, mimeType string) (string, error) {
+	name := sanitize(title)
+	if filepath.Ext(name) == "" {
+		name += extFor(mimeType)
 	}
-	dst := filepath.Join(home, "tmp", filepath.Base(body)+".html")
-	if _, err := os.Stat(dst); err == nil {
-		return dst, nil // content-addressed, so an existing copy is current
-	}
+	hex := filepath.Base(body)
+	dst := filepath.Join(home, "tmp", hex[:min(8, len(hex))]+"-"+name)
 	data, err := os.ReadFile(body)
 	if err != nil {
 		return "", err
@@ -46,18 +51,66 @@ func withExtension(home, body, typ, mime string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 		return "", err
 	}
-	tmp := dst + ".part"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	// A fresh copy each time, so edits made in a viewer do not stick.
+	f, err := os.CreateTemp(filepath.Dir(dst), ".open-*")
+	if err != nil {
 		return "", err
 	}
-	return dst, os.Rename(tmp, dst)
+	_, err = f.Write(data)
+	if err = errors.Join(err, f.Close()); err == nil {
+		err = os.Rename(f.Name(), dst)
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return dst, nil
+}
+
+// sanitize keeps letters, digits, '.', '-' and '_' from a title, turns
+// runs of anything else into one '-', and never returns a hidden or
+// empty name.
+func sanitize(title string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range title {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '-' || r == '_' {
+			b.WriteRune(r)
+			dash = false
+		} else if !dash {
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	s := strings.Trim(b.String(), ".-")
+	if r := []rune(s); len(r) > 80 {
+		s = string(r[:80])
+	}
+	if s == "" {
+		return "artifact"
+	}
+	return s
+}
+
+// extFor picks a file extension for a MIME type, preferring the common one.
+func extFor(mimeType string) string {
+	exts, _ := mime.ExtensionsByType(mimeType)
+	for _, pref := range []string{".html", ".txt", ".md", ".json", ".jpg", ".svg"} {
+		if slices.Contains(exts, pref) {
+			return pref
+		}
+	}
+	if len(exts) > 0 {
+		return exts[0]
+	}
+	return ""
 }
 
 func openCmd() *cobra.Command {
 	var n int
 	cmd := &cobra.Command{
 		Use:   "open <id>",
-		Short: "Open an artifact's stored body with the default application",
+		Short: "Open a copy of an artifact with the default application",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, id, err := openApp(args[0])
@@ -72,10 +125,10 @@ func openCmd() *cobra.Command {
 			if len(m.Artifacts) == 0 {
 				return fmt.Errorf("manifest %s has no artifacts", id)
 			}
-			if n < 0 || n >= len(m.Artifacts) {
-				return fmt.Errorf("manifest %s has %d artifacts; --artifact takes 0 to %d", id, len(m.Artifacts), len(m.Artifacts)-1)
+			if n < 1 || n > len(m.Artifacts) {
+				return fmt.Errorf("manifest %s has %d artifacts; --artifact takes 1 to %d", id, len(m.Artifacts), len(m.Artifacts))
 			}
-			art := m.Artifacts[n]
+			art := m.Artifacts[n-1]
 			if art.Skipped != "" {
 				return fmt.Errorf("artifact %d (%s) has no stored body: %s", n, art.Title, art.Skipped)
 			}
@@ -86,7 +139,7 @@ func openCmd() *cobra.Command {
 			if _, err := os.Stat(path); err != nil {
 				return fmt.Errorf("artifact %d (%s): %w", n, art.Title, err)
 			}
-			if path, err = withExtension(a.Store.Dir(), path, art.Type, art.MIME); err != nil {
+			if path, err = viewCopy(a.Store.Dir(), path, art.Title, art.MIME); err != nil {
 				return fmt.Errorf("artifact %d (%s): %w", n, art.Title, err)
 			}
 			name, cargs := openCommand(runtime.GOOS, path)
@@ -97,6 +150,6 @@ func openCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&n, "artifact", 0, "which artifact to open, counting from 0 in manifest order")
+	cmd.Flags().IntVar(&n, "artifact", 1, "which artifact to open, counting from 1 in manifest order")
 	return cmd
 }
