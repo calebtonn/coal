@@ -28,6 +28,9 @@ func rootCmd() *cobra.Command {
 	}
 	root.PersistentFlags().StringVar(&homeFlag, "home", "", "data directory (overrides COAL_HOME and ~/.coal)")
 	root.AddCommand(versionCmd(), initCmd(), validateCmd(), addCmd(), showCmd(), rmCmd(), findCmd(), reindexCmd(), openCmd())
+	for _, c := range registered {
+		root.AddCommand(c())
+	}
 	return root
 }
 
@@ -35,3 +38,11 @@ func rootCmd() *cobra.Command {
 func dataHome() (string, error) {
 	return paths.Home(homeFlag)
 }
+
+// registered holds commands that add themselves from their own file with
+// register, so parallel work on new commands does not touch this file.
+var registered []func() *cobra.Command
+
+// register adds a command constructor to the root command. Call it from
+// an init function in the command's own file.
+func register(c func() *cobra.Command) { registered = append(registered, c) }
