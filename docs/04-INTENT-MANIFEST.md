@@ -13,7 +13,7 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 3. **Artifacts with a uri are identified by (manifest, uri) and keep their history in versions[].** Artifacts without a uri are identified by content hash. The top-level hash always points at the latest version.
 4. **Provenance is mandatory.** Every manifest records which tool wrote it. A user can always answer "where did this come from."
 5. **Additive evolution.** New versions add optional fields. Readers must ignore unknown fields.
-6. **No secrets.** Manifests must not contain credentials, tokens, or session cookies. `sessionRef` is an opaque locator, never an auth token.
+6. **No secrets.** Manifests must not contain credentials, tokens, or session cookies. `sessionRef` is an opaque locator, never an auth token. If a secret reaches an artifact body anyway, `coal purge <hash>` deletes the body and marks every version that used it `skipped: "purged"`; this is the one exception to never deleting user data.
 
 ## Fields
 
