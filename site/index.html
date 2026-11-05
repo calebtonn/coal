@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>COAL: a record of your work that you own and any AI tool can read</title>
 <meta name="description" content="COAL will keep a record of what you build with AI tools: what you meant, what got made, and what comes next. Open source and local first. Pre-alpha: a proof of concept works, and the first release is being built in the open.">
-<meta name="theme-color" content="#e9e2d6">
+<meta name="theme-color" content="#bfe1ea">
 <link rel="canonical" href="https://coalmine.io/">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
 <link rel="icon" type="image/png" sizes="64x64" href="assets/icon-64.png">
@@ -103,11 +103,20 @@ code, pre { font-family: var(--mono); }
 .nav .gh .stars { display: inline-flex; align-items: center; gap: 4px; margin-left: 2px; padding-left: 10px; border-left: 1px solid rgba(255,255,255,.25); font-variant-numeric: tabular-nums; color: var(--amber-2); }
 .nav .gh .stars svg { width: 13px; height: 13px; }
 @media (max-width: 760px) { .nav .hide-sm { display: none; } }
+.topbar, .topbar .brand, .nav a, .nav .gh { transition: background .35s ease, color .35s ease, border-color .35s ease, box-shadow .35s ease; }
+.under .topbar { background: rgba(27, 35, 51, 0.88); border-bottom-color: rgba(255, 255, 255, 0.08); }
+.under .topbar .brand { color: #fff; }
+.under .topbar .brand img { background: #e9e2d6; border-radius: 6px; box-shadow: 0 0 0 3px #e9e2d6; }
+.under .nav a { color: #c9d3e0; }
+.under .nav a:hover { color: #fff; }
+.under .nav .gh { background: var(--amber-2); color: var(--coal-800); }
+.under .nav .gh:hover { background: #fff; color: var(--coal-800); }
+.under .nav .gh .stars { color: var(--amber-ink); border-left-color: rgba(27, 35, 51, .25); }
 
 /* ---------- surface ---------- */
 .surface {
   position: relative;
-  background: linear-gradient(180deg, #d4ecea 0%, #e6f2ee 45%, #f4f0e6 100%);
+  background: linear-gradient(180deg, #bfe1ea 0%, #d6ecee 40%, #ecf1ea 100%);
   overflow: hidden;
 }
 .surface .inner {
@@ -149,13 +158,25 @@ h1 .glint::after {
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 880px) { .headframe-wrap { width: min(210px, 52vw); justify-self: end; margin-top: -8px; } }
 
+.clouds { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.cloud { position: absolute; animation: drift 46s ease-in-out infinite alternate; }
+.cloud svg { width: 100%; height: auto; }
+.cloud.c1 { top: 56px; right: 6%; width: 190px; }
+.cloud.c2 { top: 150px; right: 31%; width: 120px; opacity: .8; animation-duration: 58s; }
+.cloud.c3 { top: 28px; left: 4%; width: 110px; opacity: .65; animation-duration: 64s; }
+@keyframes drift { to { transform: translateX(-36px); } }
+@media (max-width: 880px) { .cloud.c2, .cloud.c3 { display: none; } .cloud.c1 { width: 130px; top: 20px; } }
 .hills { position: absolute; left: 0; right: 0; bottom: 70px; height: 170px; z-index: 1; width: 100%; }
 .ground { position: relative; z-index: 3; width: 100%; height: 90px; margin-top: -2px; }
+
+/* ---------- below ground ---------- */
+.soil { position: relative; height: clamp(120px, 16vw, 220px);
+  background: linear-gradient(180deg, #6f6152 0%, #85735e 28%, #a8957a 62%, #c6b493 100%); }
 
 /* ---------- shaft ---------- */
 .shaft {
   position: relative;
-  background: linear-gradient(180deg, #ebe4d8 0%, #e2e0dc 18%, #d3d7de 40%, #bfc6d2 62%, #aab3c3 82%, #9ea9bb 100%);
+  background: linear-gradient(180deg, #c6b493 0%, #d3c7b1 7%, #d6d0c4 20%, #cdcdcc 38%, #c0c5cf 58%, #aeb6c5 80%, #9ea9bb 100%);
 }
 #walls { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 #walls svg { position: absolute; top: 0; }
@@ -554,6 +575,11 @@ footer .right { margin-left: auto; }
         </svg>
       </div>
     </div>
+    <div class="clouds" aria-hidden="true">
+      <div class="cloud c1"><svg viewBox="0 0 190 70"><polygon points="10,62 30,36 58,40 78,14 112,10 134,30 160,28 182,62" fill="#ffffff"/><polygon points="10,62 30,36 58,40 66,62" fill="#eef6f8"/><polygon points="134,30 160,28 182,62 120,62" fill="#e4f0f3"/></svg></div>
+      <div class="cloud c2"><svg viewBox="0 0 120 46"><polygon points="6,42 22,22 44,24 60,6 86,8 100,24 116,42" fill="#ffffff"/><polygon points="86,8 100,24 116,42 80,42" fill="#e6f1f4"/></svg></div>
+      <div class="cloud c3"><svg viewBox="0 0 110 40"><polygon points="4,36 18,20 40,18 56,4 78,8 92,20 106,36" fill="#ffffff"/><polygon points="4,36 18,20 40,18 30,36" fill="#eaf4f6"/></svg></div>
+    </div>
     <svg class="hills" viewBox="0 0 1200 170" preserveAspectRatio="none" aria-hidden="true">
       <polygon points="0,170 0,92 120,54 230,98 340,40 470,96 560,70 690,112 800,48 930,96 1040,62 1200,104 1200,170" fill="#c6dad9"/>
       <polygon points="0,170 0,122 160,92 300,128 420,96 560,132 700,100 860,136 980,108 1100,130 1200,118 1200,170" fill="#b3cbc9"/>
@@ -580,6 +606,7 @@ footer .right { margin-left: auto; }
   <!-- ======================= THE SHAFT ======================= -->
   <div class="shaft" id="shaft">
     <div id="walls" aria-hidden="true"></div>
+    <div class="soil" aria-hidden="true"></div>
 
     <!-- LEVEL 1: the problem -->
     <section class="level" id="level-1" data-depth="20" aria-labelledby="l1">
@@ -998,7 +1025,9 @@ footer .right { margin-left: auto; }
   var gauge = document.getElementById("gauge");
   var depthEl = document.getElementById("depth");
   var levels = [].slice.call(document.querySelectorAll("[data-depth]"));
-  var ticking = false;
+  var ticking = false, isUnder = false;
+  var topbar = document.querySelector(".topbar");
+  var themeMeta = document.querySelector('meta[name="theme-color"]');
   function update() {
     ticking = false;
     var y = window.scrollY + window.innerHeight * 0.4;
@@ -1022,6 +1051,12 @@ footer .right { margin-left: auto; }
     gauge.style.setProperty("--p", Math.min(100, d / 10) + "%");
     gauge.style.setProperty("--k", Math.min(1, d / 1000).toFixed(4));
     gauge.classList.toggle("on", window.scrollY > 120);
+    var under = shaft.getBoundingClientRect().top < topbar.offsetHeight;
+    if (under !== isUnder) {
+      isUnder = under;
+      document.body.classList.toggle("under", under);
+      if (themeMeta) themeMeta.setAttribute("content", under ? "#1b2333" : "#bfe1ea");
+    }
   }
   function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(update); } }
   window.addEventListener("scroll", onScroll, { passive: true });
