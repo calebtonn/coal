@@ -27,7 +27,7 @@ func rootCmd() *cobra.Command {
 		SilenceErrors: false,
 	}
 	root.PersistentFlags().StringVar(&homeFlag, "home", "", "data directory (overrides COAL_HOME and ~/.coal)")
-	root.AddCommand(versionCmd(), initCmd())
+	root.AddCommand(versionCmd(), initCmd(), validateCmd())
 	return root
 }
 
