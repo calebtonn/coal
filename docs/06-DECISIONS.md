@@ -84,7 +84,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-011: One capture contract, adapters for every coding agent with hooks
 
-**Status.** Proposed. Amends ADR-003.
+**Status.** Accepted for the proof of concept, 2026-11-04. Amends ADR-003.
 
 **Context.** ADR-003 chose Claude Code because it was the only mainstream tool with lifecycle hooks. That is no longer true (#8): Cursor, Codex CLI and Gemini CLI all have session, tool and stop or end events, and all pass JSON on stdin. If the Claude Code adapter is written as a special case, each later tool means rework, and Phase 2's "Reach" stays expensive for no reason.
 
@@ -94,7 +94,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-012: Import from session records already on disk
 
-**Status.** Proposed.
+**Status.** Accepted for the proof of concept, 2026-11-04.
 
 **Context.** The case that started COAL is a page buried in a claude.ai chat, and the MVP only serves it through a manual `coal add`. Browser capture is the planned fix, and ADR-003 already notes it is fragile. Meanwhile every coding agent writes its sessions to disk (Claude Code under `~/.claude/projects/`, Codex under `~/.codex/sessions/`), and claude.ai and ChatGPT both offer account data exports. Live capture also starts from an empty record, so the week six retro measures a record with only six weeks in it.
 
@@ -104,7 +104,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-013: The project directory anchors the intent
 
-**Status.** Proposed.
+**Status.** Accepted for the proof of concept, 2026-11-04.
 
 **Context.** Sessions are not intents. One session can touch several intents, and one intent runs across many sessions and tools. Matching sessions to manifests is the hardest part of capture, and the current spec leaves it open (#4). For coding work there is already a boundary the user chose: the project directory. F5 mentions a `.coal` marker file but nothing defines it.
 
@@ -114,7 +114,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-014: Keep history of manifest changes
 
-**Status.** Proposed.
+**Status.** Accepted for the proof of concept, 2026-11-04.
 
 **Context.** Manifests are mutable. `nextStep`, `status` and `openQuestions` are overwritten in place, so there is no way to answer "what was next last week", to see when an intent was abandoned, or to recover from a bad write by a model.
 
@@ -126,7 +126,7 @@ Considered: an append-only event log per manifest with the manifest as a project
 
 ## ADR-015: Use Agent Trace for line-level code provenance
 
-**Status.** Proposed.
+**Status.** Accepted for the proof of concept, 2026-11-04.
 
 **Context.** Each artifact carries a `producer` (tool, model, session). Agent Trace, published by Cursor in January 2026 under CC BY 4.0 and supported by Cognition, OpenCode and others, is an open, storage-agnostic spec that links code ranges to the conversations and contributors behind them. The README says the schema is the product. A second provenance format next to an emerging standard would compete with it rather than build on it.
 

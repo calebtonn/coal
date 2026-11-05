@@ -54,16 +54,18 @@ The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds
 
 | Phase | Name | Status | What it has to show |
 |---|---|---|---|
-| 1 | Record | MVP, in progress | A record captured in one tool can be read back and resumed in another |
-| 2 | Reach | Not started | Capture works from every tool, including ones with no hooks |
+| 1 | Record | MVP, in progress | A record captured in one tool can be read back and resumed in another, with sessions attached to the right intent |
+| 2 | Reach | Not started | Capture works from every coding agent with hooks and from chat apps, which have none |
 | 3 | Attention | Not started | The record plus simple rules is enough to surface the right thing at the right time |
 | 4 | Portability | Not started | Someone else's software writes manifests that work here |
 
 ### Phase 1: Record (the MVP, six weeks)
 
 - Intent Manifest v0.1, with a published schema, an example and a validator
-- Claude Code hooks: capture on write, summarize on stop
-- Resume: a new session opens with the next step before you type
+- One capture contract (ADR-011), with Claude Code as its first adapter: capture on write, update state at session end
+- A `.coal` marker anchors the intent to the project directory (ADR-013)
+- History of every manifest change in a local git repo (ADR-014)
+- Resume: a new session shows the next step before you type, and the first reply offers to continue
 - MCP server, `coal` CLI, local web UI
 - Two packages: `diamond` and `coal`
 
@@ -71,9 +73,10 @@ Done when: the week six retro. If I have not reached for it unprompted at least 
 
 ### Phase 2: Reach
 
-- `coal import`: build manifests from the session logs already on disk
-- Browser capture from claude.ai and chatgpt.com
-- Cursor and other MCP writers
+- Cursor and Codex adapters on the Phase 1 capture contract
+- `coal import` (ADR-012): build manifests from session logs already on disk and from claude.ai and ChatGPT exports
+- Browser capture from claude.ai and chatgpt.com, if import is not enough
+- Code provenance by reference to Agent Trace (ADR-015)
 - Semantic search with a local embedding model
 - Raycast extension as the entry point
 

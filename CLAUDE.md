@@ -58,9 +58,9 @@ pnpm --filter @coal/coal link       # makes `coal` available on PATH
 
 The MVP is done when this demo works end to end on a clean machine:
 
-1. In a Claude Code session with the COAL hooks installed, ask Claude to build an HTML budget tracker. On session stop, a manifest appears in `~/.coal/manifests/` with the intent summary and the HTML registered as an artifact.
+1. In a Claude Code session with the COAL hooks installed, ask Claude to build an HTML budget tracker. A manifest appears in `~/.coal/manifests/` on the first file write, with the intent summary in the user's words and the HTML registered as an artifact. On session end (`SessionEnd`), its state is updated, and a `.coal` marker in the project directory points at it.
 2. In a different tool connected to the COAL MCP server (Claude Desktop, Cursor, or Claude Code in another directory), ask "find the budget thing I built." The tool calls `coal_find`, gets the manifest back, and can open or read the artifact.
-3. Start a new Claude Code session in the budget directory. Before the user types anything, the first assistant turn says, in substance, "You left off at CSV export. Continue?" This is the headline feature. It comes from the `SessionStart` hook reading the manifest matched by context.
+3. Start a new Claude Code session in the budget directory. Before the user types anything, the terminal shows "COAL: You left off at CSV export" from the hook's `systemMessage`, and the first assistant reply offers to continue from it. This is the headline feature. It comes from the `SessionStart` hook reading the manifest matched through the `.coal` marker or `contexts[]`. The session attaches to the same manifest instead of creating a new one.
 4. `coal find "budget"` on the command line returns the same result.
 5. `http://127.0.0.1:4242` shows the manifest with a preview of the HTML.
 
@@ -68,7 +68,7 @@ Nothing beyond that is in scope for the MVP. Interrupt gating, browser capture, 
 
 ## Intent summaries: who writes them
 
-`intent.summary` is the user's words by default. The Claude Code adapter sets it from the user's first message of the session (trimmed to 200 characters). At `Stop`, the model may propose a better summary and a `goal`; the proposal is written to `intent.goal` and `state.summary`, never over `intent.summary`, unless the user confirms. Every manifest records `intent.source` as `user` or `model` so search can prefer user-written summaries. This is deliberate: a record in the user's own words compounds; a pile of model paraphrases does not.
+`intent.summary` is the user's words by default. The Claude Code adapter sets it from the user's first message of the session (trimmed to 200 characters). At `SessionEnd`, or when the model calls `coal_update_state`, the model may propose a better summary and a `goal`; the proposal is written to `intent.goal` and `state.summary`, never over `intent.summary`, unless the user confirms. Every manifest records `intent.source` as `user` or `model` so search can prefer user-written summaries. This is deliberate: a record in the user's own words compounds; a pile of model paraphrases does not.
 
 ## Positioning (so the code matches the pitch)
 

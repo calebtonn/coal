@@ -90,13 +90,19 @@ Resources exposed:
 
 ### F5. Claude Code adapter
 
-A hook set that installs into `~/.claude/settings.json` (or project `.claude/settings.json`):
+The adapter translates Claude Code hook payloads into the capture contract from ADR-011: `sessionStart`, `prompt`, `fileWritten`, `turnEnd` and `sessionEnd`. Hooks never write manifests. Each hook drops one event file in `~/.coal/queue/` and exits. One writer, holding `queue/.lock`, folds events into manifests in order.
 
-- `SessionStart`: if the working directory maps to an existing manifest (by a `.coal` marker file or path match), inject its summary and `nextStep` as context.
-- `PostToolUse` on `Write` / `Edit` for `*.html`, `*.md`, `*.py`, `*.ts`, `*.tsx`: register the file as an artifact on the session's manifest (creating the manifest lazily on first write, with the session's first user message as the intent summary).
-- `Stop`: ask the model for a one-line intent summary and a `nextStep`, write them to the manifest.
+Hooks, installed into `~/.claude/settings.json` (or a project `.claude/settings.json`) with `coal adapter install claude-code`:
 
-Install with `coal adapter install claude-code`.
+- `SessionStart`: fold any queued events first, so the previous session's end is applied. Then match the working directory to a manifest (see Matching). On a match, print a `systemMessage` the user sees before typing, for example `COAL: You left off at "Add CSV export". 1 open question.`, and `additionalContext` with the summary, `nextStep`, open questions, artifact list and an instruction to open the first reply by offering to continue.
+- `UserPromptSubmit`: queue the prompt. The first prompt that passes the summary filter (#11) becomes `intent.summary` with `source: user`.
+- `PostToolUse` on `Write`, `Edit`, `MultiEdit` and `NotebookEdit`: queue the written path. The writer attaches it to the matched manifest, or creates one lazily, and registers it as an artifact version (artifact identity is `(manifest, uri)`, see `docs/04-INTENT-MANIFEST.md`). Files on the secret deny-list, or with bodies that look like tokens, are recorded with `skipped` and no copy.
+- `Stop`: runs after every turn, not at session end. Queue a cheap `turnEnd` with `last_assistant_message`; the writer bumps `state.lastActivityAt`.
+- `SessionEnd`: queue `sessionEnd` and return at once, because the default timeout is 1.5 seconds. It also fires on `/clear`. Sessions that end without it are folded on the next `SessionStart`.
+
+**Matching** (ADR-013). In order: a `.coal` marker at or above the working directory, nearest first; a `path` context where the resolved working directory equals the key or sits under `key + "/"`, longest key first; a `repo` context whose key equals the working directory's normalized origin remote. Only `active` and `paused` manifests match. On lazy creation the writer adds a `path` context (git top level, else the working directory), a `repo` context when there is a remote, and the `.coal` marker, which it lists in `.git/info/exclude`. A second session in the same project attaches to the same manifest.
+
+**Summaries** (#2). No model call by default. The model is asked, through the `SessionStart` context and the `coal_update_state` description, to record `nextStep` when it finishes a piece of work. If it did not, `sessionEnd` falls back to extraction: `state.summary` from the last assistant message, and `nextStep` only from a line that starts with "Next step" or "Next:". A model summarizer over the transcript is an opt-in setting in `config.json`, which counts as a call the user configured. Model proposals go to `intent.goal` and `state.summary`, never over `intent.summary`.
 
 ### F6. Web UI
 

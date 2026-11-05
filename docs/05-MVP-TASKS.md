@@ -55,19 +55,22 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 ## Week 3: Capture
 
 ### T08. Claude Code adapter (`coal adapter install claude-code`)
-- Hook scripts that shell out to the `coal` binary for `SessionStart`, `PostToolUse`, `Stop`
-- `intent.summary` = the user's first message of the session, trimmed; `intent.source` = `user`
-- `Stop` writes the model's proposed summary to `state.summary` and `intent.goal`, never over `intent.summary`
-- `coal adapter install claude-code` merges hook config into `~/.claude/settings.json` without clobbering existing hooks
-- `coal adapter uninstall claude-code`
-- Lazy manifest creation on first qualifying write; session id from hook payload becomes `sessionRef`
-- `Stop` hook requests summary and `nextStep` from the session transcript (use the hook's transcript path)
-- **Accept:** The definition-of-done demo step 1 in `CLAUDE.md` works
+- The capture contract from ADR-011 (`sessionStart`, `prompt`, `fileWritten`, `turnEnd`, `sessionEnd`), kept separate from Claude Code's payload shapes
+- Hooks for `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop` and `SessionEnd` call `coal hook <event>`, which writes one event file to `queue/` and exits; one writer under `queue/.lock` folds events into manifests (see F5)
+- `Stop` only bumps `state.lastActivityAt`; `SessionEnd` queues the end of session and returns well inside its 1.5 second timeout (#1)
+- `intent.summary` = the first user message that passes the summary filter (#11), trimmed to 200 characters; `intent.source` = `user`, else `model`
+- Lazy manifest creation on first qualifying write writes `contexts[]` and the `.coal` marker (ADR-013, #4); session id from the payload becomes `sessionRef`
+- Artifacts are identified by `(manifest, uri)` with `versions[]` (#5); writes use `rev` compare-and-swap (#6); deny-list and token scan before copying (#7)
+- `sessionEnd` falls back to extraction when the model recorded no state (#2); proposals go to `state.summary` and `intent.goal`, never over `intent.summary`
+- `coal adapter install claude-code` merges hook config into `~/.claude/settings.json` without clobbering existing hooks; `coal adapter uninstall claude-code` removes only COAL's entries
+- **Accept:** The definition-of-done demo step 1 in `CLAUDE.md` works; every hook returns in under 200 ms on recorded payloads
 
 ### T09. Session resume context (headline feature)
-- `SessionStart` hook matches manifests by `contexts[]`: a `path` or `repo` context whose key contains cwd, plus any artifact whose `uri` is under cwd
-- Injects: summary, nextStep, openQuestions, artifact list as additional context, with an instruction to open by offering to continue
-- **Accept:** Starting Claude Code in the demo directory, the first assistant turn says in substance "You left off at CSV export. Continue?" before the user types. This is step 3 of the definition of done.
+- `SessionStart` folds the queue, then matches: `.coal` marker at or above cwd, then a `path` context where cwd is at or under the key (longest wins), then a `repo` context equal to cwd's normalized remote (#4, ADR-013)
+- Prints a `systemMessage` with the next step, shown to the user before they type (#3)
+- Injects summary, nextStep, openQuestions and artifact list as `additionalContext`, with an instruction to open the first reply by offering to continue
+- Tests: subdirectory, sibling with a shared prefix (`budget` vs `budget-old`), home directory, two clones of the same remote
+- **Accept:** On session start in the budget directory, the terminal shows the next step before the user types, and the first assistant reply offers to continue from it. This is step 3 of the definition of done.
 
 ## Week 4: Web UI
 

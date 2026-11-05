@@ -57,22 +57,25 @@ Two packages. `diamond` has no runtime dependency on anything else in the repo. 
 sequenceDiagram
     participant U as User
     participant CC as Claude Code
-    participant H as COAL hook
-    participant M as MCP server
+    participant H as coal hook
+    participant Q as queue/
+    participant W as Writer (holds queue/.lock)
     participant S as Storage
 
     U->>CC: "Build me an HTML budget tracker"
+    CC->>H: UserPromptSubmit(prompt)
+    H->>Q: prompt event, exit
     CC->>CC: writes budget.html
     CC->>H: PostToolUse(Write, budget.html)
-    H->>M: coal_record_intent (lazy, first write)
-    M->>S: manifests/<id>.json
-    H->>M: coal_register_artifact(budget.html)
-    M->>S: artifacts/<sha256>, manifest updated
+    H->>Q: fileWritten event, exit
+    W->>Q: fold events in order
+    W->>S: manifests/<id>.json (lazy), artifacts/<sha256>, .coal marker, git commit
+    CC->>H: Stop (every turn)
+    H->>Q: turnEnd event, exit
     U->>CC: ends session
-    CC->>H: Stop
-    H->>CC: ask for summary + nextStep
-    H->>M: coal_update_state
-    M->>S: manifest updated
+    CC->>H: SessionEnd
+    H->>Q: sessionEnd event, exit
+    W->>S: state updated (next SessionStart folds it if nothing else did)
 ```
 
 ## Find and resume flow (any tool)
