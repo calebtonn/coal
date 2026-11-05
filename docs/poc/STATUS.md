@@ -10,13 +10,37 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 - M0 toolchain and scaffold (`cc67131`): `go.mod`, `coal version`, `coal init`, `COAL_HOME` and `--home`, `Makefile`, gitignore rules.
 - M1 schema and manifest types: schema changes (`ad0e43e`); `internal/manifest`, `spec/embed.go` and `coal validate` in the commit that adds this line.
 
+- PR #10 fetched as `pr-10` and merged into `poc/go` (`0c95b8b`); ADR-011 to ADR-015 marked accepted for the POC. Follow-up edits to F5, T08, T09, the README phase table, the definition of done and the capture diagram (`731d9bf`).
+
 ## In progress
 
-- Nothing, waiting for M2.
+- M2 store (builder on Opus).
+- M7 web UI on Svelte 5 and `@davenicoll/web-framework` (builder on Opus), built against the M4 API contract.
 
 ## Next
 
-- M2 store, M3 index, M4 daemon, M5 MCP, M6 capture, M7 web UI, M8 demo.
+- M3 index, M4 daemon, M5 MCP, M6 capture, M8 demo, M9 remaining issue work, M10 import.
+
+## Issues
+
+Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay open; nothing is closed or commented on.
+
+| Issue | Status | Commits |
+|---|---|---|
+| #1 SessionEnd, not Stop | Docs done; code waits for M6 | `731d9bf` |
+| #2 How summaries get written | Docs done; code waits for M6 | `731d9bf` |
+| #3 systemMessage resume | Docs done; code waits for M6 | `731d9bf` |
+| #4 Session matching | Docs done; code waits for M6 | `731d9bf` |
+| #5 Artifact identity | Schema done; store in M2 | `ad0e43e` |
+| #6 rev compare-and-swap | Schema done; store in M2, API in M4, MCP in M5 | `ad0e43e` |
+| #7 Secrets | Schema rule done; scan in M2; purge in M9 | `ad0e43e` |
+| #8 Hooks in other tools | Done | `1d10c78` |
+| #9 Smaller inconsistencies | Done. OpenPortable dropped because it could not be found | `ad0e43e`, `b8a7a95` |
+| #11 Summary filter, rename | Filter in M6; rename in M9 | |
+| #12 Decision-gate metrics | M9 | |
+| #13 Prior art | Done | `aae12af` |
+| #14 Second writer | Done | `aae12af` |
+| #15 coal_find retries, porter | M3 and M5 | |
 
 ## Blocked
 

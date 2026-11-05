@@ -30,6 +30,8 @@ One working end-to-end demo, all local and sandboxed:
 | Web UI | Svelte 5 + Vite + TypeScript under `web/`, using Dave's `@davenicoll/web-framework` (Tailwind v4, daisyUI 5, lucide icons) as a local path dependency on the sibling checkout `../web-framework`, built with Bun and embedded with `go:embed` |
 | Tests | `go test`, Vitest with jsdom and testing-library for the UI |
 
+**Deviation from the review.** The review recommends Vite and React for the UI. Dave asked on 2026-11-04 for the frontend framework from his GitHub account, `@davenicoll/web-framework`, which is Svelte 5 on Vite and Bun. The UI uses it instead of React. It still builds with Vite, embeds with `go:embed`, and validates with Ajv, so nothing else in the plan changes.
+
 The TypeScript workspace files from the original scaffold (`package.json`, `pnpm-workspace.yaml`, `packages/`) stay untouched. The POC lives beside them.
 
 ## Layout
@@ -193,11 +195,49 @@ Each milestone is one builder task, under 1000 changed lines excluding generated
 - Accept: `scripts/demo.sh` passes twice in a row from a fresh sandbox
 - Demo: `scripts/demo.sh`
 
-### Stretch, only after M8
+### M9. Remaining issue work
 
-- `coal import claude-code <projects-dir>` from transcript fixtures (ADR-012)
-- `coal rename <id> "..."` (#11) and `coal log <id>` (ADR-014)
-- `coal purge <hash>` as the documented exception to never-delete (#7)
+Dave's order of 2026-11-04: ADR-011 to ADR-015 are accepted for the POC, and every open issue gets implemented on `poc/go`. Most issues fold into M1 to M8 (see the issue map below). What is left after M8 is this:
+
+- `coal rename <id> "..."` sets `intent.summary` and `source: user` (#11)
+- `coal purge <hash>`: the one documented exception to never-delete, for removing a secret from `artifacts/` (#7). It asks for confirmation unless `--yes`, removes the body, marks every artifact version that pointed at it with `skipped: "purged"`, and logs the purge
+- Local counters in `logs/metrics.jsonl` (#12): resume lines shown, resume acted on (the next prompt in that session is not a new topic, approximated as the session writing to the matched manifest), `coal_find` calls by tool, sessions attached vs manifests created, renames. `coal stats` prints a summary. No telemetry; the file never leaves the machine
+- `coal log <id>` shows a manifest's git history (ADR-014)
+- ADR-015: the `ext["dev.agent-trace"]` key documented on artifacts in `docs/04-INTENT-MANIFEST.md`; no code needed until an adapter produces Agent Trace records
+- Accept: tests for each command; `coal stats` after `scripts/demo.sh` shows non-zero counts
+
+### M10. Import (ADR-012)
+
+- `coal import claude-code [--dir <projects-dir>]` reads Claude Code transcripts, groups them by working directory, and prints proposed manifests. `--accept` writes them. Nothing is written without it
+- Fixtures only in tests; a manual run against Dave's real `~/.claude/projects/` is read only and needs his go-ahead
+- Chat-app exports (claude.ai, ChatGPT) stay out of the POC
+- Accept: fixture transcripts produce one proposal per project directory with the first passing prompt as the summary
+
+## Issue map
+
+| Issue | Where it lands |
+|---|---|
+| #1 SessionEnd, not Stop | Docs done; code in M6 |
+| #2 How summaries get written | Docs done (F5); extraction fallback in M6 |
+| #3 systemMessage resume | Docs done; code in M6 |
+| #4 Session matching | Docs done; code in M6 |
+| #5 Artifact identity | Schema in M1; store in M2 |
+| #6 rev compare-and-swap | Schema in M1; store in M2; `If-Match` in M4; MCP conflict in M5 |
+| #7 Secrets | Schema rule in M1; deny-list and scan in M2; `coal purge` in M9 |
+| #8 Hooks in other tools | Docs done |
+| #9 Smaller inconsistencies | Docs done; schema default and example note in M1 |
+| #11 Summary filter, `coal rename` | Filter in M6; rename in M9 |
+| #12 Decision-gate metrics | M9; T14 text updated with the M9 docs |
+| #13 Prior art | Docs done |
+| #14 Second writer | Docs done |
+| #15 coal_find retries, porter | Porter and prefix in M3; description in M5 |
+
+GitHub issues stay open. Nothing is closed or commented on from this project.
+
+### Stretch, only after M10
+
+- A Cursor or Codex adapter on the capture contract (ADR-011)
+- An opt-in model summarizer over the transcript (#2)
 
 ## Working rules
 
