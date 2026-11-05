@@ -285,6 +285,10 @@
         },
         "producer": {
           "$ref": "#/$defs/provenance"
+        },
+        "skipped": {
+          "type": "string",
+          "description": "Why this version's body was not copied."
         }
       }
     },

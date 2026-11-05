@@ -60,7 +60,7 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 | `createdAt` | ISO 8601 | yes | When the latest version was recorded |
 | `producer` | Provenance | yes | Which tool produced the latest version (may differ from manifest provenance) |
 | `versions` | ArtifactVersion[] | no | Every recorded body, oldest first. At least one entry when present. The last entry matches the top-level `hash`, `size`, `createdAt` and `producer`. |
-| `skipped` | string | no | Why the body was not copied, for example a possible secret |
+| `skipped` | string | no | Why the latest body was not copied, for example a possible secret |
 
 Simple readers can ignore `versions` and use the top-level fields, which always describe the latest version.
 
@@ -72,6 +72,7 @@ Simple readers can ignore `versions` and use the top-level fields, which always 
 | `size` | integer | no | Bytes |
 | `createdAt` | ISO 8601 | yes | When this version was recorded |
 | `producer` | Provenance | yes | Which tool produced this version |
+| `skipped` | string | no | Why this body was not copied |
 
 ### State
 

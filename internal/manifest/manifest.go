@@ -87,6 +87,7 @@ type ArtifactVersion struct {
 	Size      *int64     `json:"size,omitempty"`
 	CreatedAt string     `json:"createdAt"`
 	Producer  Provenance `json:"producer"`
+	Skipped   string     `json:"skipped,omitempty"`
 }
 
 // State is where the work stands.
