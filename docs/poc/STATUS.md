@@ -19,6 +19,7 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 - M6a capture contract, queue, marker and matching (`219bae6`, `b21a219`, `c4b678b`): `internal/capture` (events, Claude Code translation, summary filter, resume output, sessionEnd extraction), `internal/queue` (flock single writer, `failed/` for bad events), `internal/marker` (git root and remote without shelling out, `.coal` marker, matching), and recorded payloads in `testdata/claude-code/` with `/PROJECT/budget` as a placeholder path. Passes under `go test -race` with Zig as the C compiler.
 - M5 MCP server (`28fb2b4`, `8229764`): `coal mcp` on stdio with the Go SDK v1.8.0, six tools and the `coal://manifests/active` resource, all through `internal/app`. `coal_find` returns `{results: [...]}` so structured content is an object for older clients, plus a compact text rendering. `coal_update_state` returns a tool error with the current rev and state on a stale `rev`. `coal_record_intent` sets `source: user` only when the model passes `summaryFromUser: true`, and turns `cwd` into a `path` context. Logs go to `logs/mcp.log`. `scripts/mcp-smoke.sh` passes against the sandbox; it keeps stdin open until the find response arrives, because the server drops in-flight requests at EOF. 7 tests pass, also under `-race`.
 - M4 daemon (`1b1b247`, `02cba27`): `coal serve [--port 4242]` on 127.0.0.1 only, `internal/daemon` with the API the web UI calls, `If-Match` on PATCH with 412 and the current manifest on a stale rev, artifact bodies with the stored MIME and `Content-Security-Policy: sandbox`, the embedded UI with SPA fallback and a strict CSP carrying the hash of each inline script, a Host and Origin guard, and `logs/daemon.log` rotating at 10 MB. `make web` and `make dev` work. `go test -race` passes with Zig as the C compiler. `Options.Tick` drains the capture queue every two seconds (wired in `a5310ad`). A headless Chromium check (`make e2e`, `d478d9d`) passes with no console errors and no CSP violations; it needed `font-src 'self' data:` for Vite's inlined font subsets, and `style-src 'self'` holds with no `unsafe-inline`.
+- M9 rename, log, purge and stats (`d942568`, `1c8eafa`, `411d445`, `03eecb4`, `7931b30`): `internal/metrics` writes and summarises `logs/metrics.jsonl` in the same line format as the MCP server. `coal rename` sets the summary and `source: user`, and an ambiguous id prefix now lists the candidates for every command. `coal log` shows git history with UTC dates and works for a removed manifest by full id. `coal purge` asks for "yes", marks versions `skipped: "purged"`, then deletes the body and any `tmp/` copy, and never deletes a manifest. `coal stats` prints counts and the two ratios. Design rule 6 and T14 updated. The CLAUDE.md line about purge waits for Dave, because agents do not edit CLAUDE.md. Left in M9: the ADR-015 doc note.
 
 - End-to-end check by the lead from a fresh sandbox at `85e5f23`: replayed session gives one manifest in the user's words with the HTML artifact, the `.coal` marker and next step "add CSV export"; `coal find`, MCP `coal_find` and `/api/manifests` all return it; the second session start prints the resume line; the daemon serves the artifact with `Content-Security-Policy: sandbox`. Full Go suite and vet pass.
 
@@ -30,7 +31,7 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 
 ## Next
 
-- M8 demo, M9 remaining issue work, M10 import.
+- M8 demo, M9 ADR-015 doc note and the CLAUDE.md purge line, M10 import.
 
 ## Issues
 
@@ -44,11 +45,11 @@ Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay o
 | #4 Session matching | Done: marker, contexts, matching, lazy creation, second session attaches | `731d9bf`, `c4b678b`, `f371373` |
 | #5 Artifact identity | Schema, store and the MCP `version` argument done | `ad0e43e`, `da41f14`, `28fb2b4` |
 | #6 rev compare-and-swap | Done: schema, store, API `If-Match` and the MCP conflict | `ad0e43e`, `da41f14`, `1b1b247`, `28fb2b4` |
-| #7 Secrets | Schema rule, deny-list and token scan done; purge in M9 | `ad0e43e`, `da41f14` |
+| #7 Secrets | Schema rule, deny-list, token scan and `coal purge` done; CLAUDE.md line waits for Dave | `ad0e43e`, `da41f14`, `03eecb4` |
 | #8 Hooks in other tools | Done | `1d10c78` |
 | #9 Smaller inconsistencies | Done. OpenPortable dropped because it could not be found | `ad0e43e`, `b8a7a95` |
-| #11 Summary filter, rename | Filter, placeholder upgrade and the rename hint with a unique prefix done; `coal rename` in M9 | `219bae6`, `0d69953`, `f371373` |
-| #12 Decision-gate metrics | `coal_find` calls by client name done; capture counters (resume shown and acted on, sessions attached, manifests created) done; `coal stats` and the rename counter in M9 | `28fb2b4`, `a5310ad` |
+| #11 Summary filter, rename | Filter, placeholder upgrade and the rename hint with a unique prefix done; `coal rename` done | `219bae6`, `0d69953`, `f371373`, `1c8eafa` |
+| #12 Decision-gate metrics | `coal_find` calls by client name done; capture counters (resume shown and acted on, sessions attached, manifests created) done; `coal stats` and the rename and purge counters done; T14 reads `coal stats` | `28fb2b4`, `a5310ad`, `d942568`, `7931b30` |
 | #13 Prior art | Done | `aae12af` |
 | #14 Second writer | Done | `aae12af` |
 | #15 coal_find retries, porter | Done: porter, prefix, snippet and matched fields, and the `coal_find` description with the retry and active-resource guidance | `86bf586`, `28fb2b4` |
