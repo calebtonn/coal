@@ -44,4 +44,4 @@ The layer only works if people trust it with everything they are doing. A closed
 
 - The major platforms converge on a shared, user-exportable intent format on their own. (Unlikely; it works against their lock-in.)
 - Users do not actually want cross-tool continuity, and single-tool consolidation wins. (Possible for consumers; unlikely for people who build things.)
-- Capture is too lossy without platform cooperation. (Real risk; the MVP tests it with the one tool that gives us hooks, Claude Code.)
+- Capture is too lossy without platform cooperation. (Real risk; the MVP tests it with one tool that has lifecycle hooks, Claude Code.)

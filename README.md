@@ -19,13 +19,14 @@ It runs on your machine. The record is a folder of JSON files you can read with 
 
 ## Status
 
-Nothing is built yet. This repo is the spec and the task list. If you want to follow along or help, start with `CLAUDE.md` and `docs/05-MVP-TASKS.md`.
+Pre-alpha. Nothing runs yet. This repo is the spec, the decisions behind it, and the build plan. The most useful help right now is a careful read of the spec: if something is wrong, unclear or contradicts itself, open an issue. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is wanted and how. The build plan is in `docs/05-MVP-TASKS.md`.
 
 ## Layout
 
 ```
 coal/
   CLAUDE.md                     Instructions for Claude Code
+  CONTRIBUTING.md               What help is useful now, and how
   assets/                       Icon: icon.png plus 16 to 512 px sizes
   docs/
     01-THESIS.md                Why this exists, one page
@@ -46,7 +47,7 @@ Two packages. `diamond` is the library. `coal` is what you install. I will split
 
 ## What the MVP covers
 
-Capture comes from Claude Code only, because it is the one mainstream tool with lifecycle hooks today. The case that started this (a page buried in a claude.ai chat) is handled in the MVP by running `coal add` on a downloaded file. Browser capture comes in Phase 2. The MVP shows that the record and the resume work with one harness. It does not yet show that capture works everywhere.
+Capture comes from Claude Code only. Cursor, Codex CLI and Gemini CLI have lifecycle hooks too, but one adapter is enough to test whether the record is worth keeping (ADR-011). The case that started this (a page buried in a claude.ai chat) is handled in the MVP by running `coal add` on a downloaded file. Browser capture comes in Phase 2. The MVP shows that the record and the resume work with one harness. It does not yet show that capture works everywhere.
 
 ## Phases
 
@@ -109,4 +110,4 @@ Done when: a manifest written by software this repo did not produce validates an
 
 ## License
 
-Apache 2.0. See `LICENSE`. All of it is open source: the schema, the library, the CLI, every adapter, and the policy engine when it exists. No paid tier.
+Apache 2.0. See [LICENSE](LICENSE). All of it is open source: the schema, the library, the CLI, every adapter, and the policy engine when it exists. No paid tier.

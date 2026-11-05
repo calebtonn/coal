@@ -20,6 +20,8 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-003: Claude Code hooks for first capture, no browser capture in MVP
 
+**Status.** Accepted. Amended by ADR-011: Claude Code is no longer the only tool with hooks; the MVP scope stands.
+
 **Context.** Browser capture from claude.ai or chatgpt.com requires an extension and fights with page structure that changes without notice. Claude Code exposes deterministic hooks.
 
 **Decision.** MVP captures only from Claude Code. Browser capture is Phase 2.
