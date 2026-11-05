@@ -1,10 +1,10 @@
 # Contributing to COAL
 
-Thanks for looking. Nothing in COAL runs yet, so the help I can use now is mostly about the spec, not code.
+Thanks for looking. Nothing in COAL runs yet, so the useful help right now is mostly about the spec, not code.
 
 ## Where the project is
 
-COAL is pre-alpha. The repo holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). I build the MVP in that order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, I continue to Phase 2, change direction, or stop. The bar is in the README: if I have not reached for COAL unprompted at least five times that week, I stop. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
+COAL is pre-alpha. The repo holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). The MVP is built in that order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, the project continues to Phase 2, changes direction, or stops. The bar is in the README: if COAL does not get used unprompted at least five times that week, the project stops. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
 
 ## What helps now
 
@@ -27,7 +27,7 @@ COAL is pre-alpha. The repo holds the spec, the decisions behind it, and an orde
 
 ## Using AI tools
 
-I build COAL with Claude Code; I direct the work and review what it produces. Issues and pull requests written with AI tools are fine if you have read and checked them yourself. Say a tool was used; a footer line is enough. I will close large batches of unchecked generated changes.
+COAL is built with Claude Code. A person directs the work and reviews everything it produces. Issues and pull requests written with AI tools are fine if you have read and checked them yourself. Say a tool was used; a footer line is enough. Large batches of unchecked generated changes will be closed.
 
 `CLAUDE.md` tells agents to work only on the issue you point them at.
 
