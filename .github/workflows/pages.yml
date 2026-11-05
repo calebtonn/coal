@@ -1,7 +1,8 @@
 name: Deploy site
 
 # Publishes site/ and the Intent Manifest schema to GitHub Pages (coalmine.io).
-# Runs only after a change to the site or the schema lands on main.
+# Runs when a change to the site or the schema lands on main, when run by hand,
+# and once a day to refresh the star count.
 on:
   push:
     branches: [main]
@@ -14,6 +15,8 @@ on:
   # Rebuild once a day so the star count on the GitHub button stays current.
   schedule:
     - cron: "17 6 * * *"
+    # In a public repo GitHub turns off scheduled runs after 60 days without
+    # activity. Turn this back on under Actions if the star count stops updating.
 
 permissions:
   contents: read
@@ -25,6 +28,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pages: read
@@ -36,9 +40,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          stars=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+          stars=$(curl -fsS --max-time 15 --retry 2 --retry-delay 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}" \
             | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("stargazers_count", ""))') || stars=""
+          case "$stars" in ''|*[!0-9]*) stars="" ;; esac
           echo "STARS=$stars" >> "$GITHUB_ENV"
       - name: Build
         run: ./site/build.sh _site

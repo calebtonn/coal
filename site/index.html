@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>COAL: a record of your work that you own and any AI tool can read</title>
-<meta name="description" content="COAL will keep a record of what you build with AI tools: what you meant, what got made, and what comes next. Open source and local first. Pre-alpha: a proof of concept works, and the first release is being built in the open.">
+<meta name="description" content="COAL will keep a record of what you build with AI tools: what you meant, what got made, and what comes next. Open source and local first. Pre-alpha: a proof of concept runs the demo, and the first release is being built in the open.">
 <meta name="theme-color" content="#bfe1ea">
 <link rel="canonical" href="https://coalmine.io/">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
@@ -56,7 +56,7 @@ body {
   margin: 0;
   font-family: var(--font);
   color: var(--ink);
-  background: #9ea9bb;
+  background: #9ea9bb linear-gradient(#bfe1ea, #bfe1ea) no-repeat 0 0 / 100% 120px;
   line-height: 1.6;
   font-size: 17px;
   overflow-x: hidden;
@@ -103,6 +103,7 @@ code, pre { font-family: var(--mono); }
 .nav .gh .stars { display: inline-flex; align-items: center; gap: 4px; margin-left: 2px; padding-left: 10px; border-left: 1px solid rgba(255,255,255,.25); font-variant-numeric: tabular-nums; color: var(--amber-2); }
 .nav .gh .stars svg { width: 13px; height: 13px; }
 @media (max-width: 760px) { .nav .hide-sm { display: none; } }
+@media (max-width: 360px) { .nav .gh .stars { display: none; } }
 .topbar, .topbar .brand, .nav a, .nav .gh { transition: background .35s ease, color .35s ease, border-color .35s ease, box-shadow .35s ease; }
 .under .topbar { background: rgba(27, 35, 51, 0.88); border-bottom-color: rgba(255, 255, 255, 0.08); }
 .under .topbar .brand { color: #fff; }
@@ -165,7 +166,7 @@ h1 .glint::after {
 .cloud.c2 { top: 150px; right: 31%; width: 120px; opacity: .8; animation-duration: 58s; }
 .cloud.c3 { top: 28px; left: 4%; width: 110px; opacity: .65; animation-duration: 64s; }
 @keyframes drift { to { transform: translateX(-36px); } }
-@media (max-width: 880px) { .cloud.c2, .cloud.c3 { display: none; } .cloud.c1 { width: 130px; top: 20px; } }
+@media (max-width: 880px) { .cloud.c2, .cloud.c3 { display: none; } .cloud.c1 { width: 110px; top: 6px; right: 3%; } }
 .hills { position: absolute; left: 0; right: 0; bottom: 70px; height: 170px; z-index: 1; width: 100%; }
 .ground { position: relative; z-index: 3; width: 100%; height: 90px; margin-top: -2px; }
 
@@ -446,8 +447,8 @@ footer .right { margin-left: auto; }
 .gauge .count { font: 700 11px/1 var(--font); color: var(--gem-700); background: rgba(255,253,249,.94); padding: 5px 8px; border-radius: 4px; display: none; white-space: nowrap; }
 .gauge .count.on { display: block; }
 @media (max-width: 760px) {
-  .gauge { top: 18px; right: auto; left: 50%; transform: translateX(-50%); grid-auto-flow: column; align-items: center; gap: 6px; z-index: 60; }
-  .gauge .rail { display: none; }
+  /* On phones the level signs carry the depth; a floating readout would cover text. */
+  .gauge { display: none; }
 }
 
 /* ---------- reveal on scroll ---------- */
@@ -456,7 +457,7 @@ footer .right { margin-left: auto; }
 
 @media print {
   .js .reveal { opacity: 1 !important; transform: none !important; }
-  #walls, .gauge, .topbar, .skip, .hills, .headframe-wrap { display: none !important; }
+  #walls, .gauge, .topbar, .skip, .hills, .headframe-wrap, .clouds, .ground, .soil { display: none !important; }
   .shaft, .surface, body { background: #fff !important; }
   .level::before { display: none; }
   .panel, .rules { box-shadow: none; }
@@ -522,7 +523,7 @@ footer .right { margin-left: auto; }
           <a class="btn primary" href="#level-1">Head down the shaft <svg aria-hidden="true"><use href="#i-down"/></svg></a>
           <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/docs/02-SPEC.md"><svg aria-hidden="true"><use href="#i-github"/></svg>Read the spec</a>
         </div>
-        <p class="note">We are building it in the open. A proof of concept already runs the full demo, from capture to resume. There is nothing to install yet. The first release captures from Claude Code only, and anything else you add by hand.</p>
+        <p class="note">We are building it in the open. A proof of concept runs the demo from a recorded Claude Code session, from capture to the resume line. There is nothing to install yet. The first release captures from Claude Code only, and anything else you add by hand.</p>
       </div>
       <div class="headframe-wrap" aria-hidden="true">
         <svg class="headframe" viewBox="0 0 320 300" role="presentation">
@@ -830,11 +831,11 @@ footer .right { margin-left: auto; }
         <div class="sign reveal"><span class="bolt"></span>The seam<span class="depth">−1000 m</span><span class="bolt"></span></div>
         <div class="lump reveal"><img src="assets/icon-512.png" alt="The COAL logo: a lump of coal cracked open with a diamond inside" width="300" height="300" loading="lazy" decoding="async"></div>
         <h2 id="l9" class="reveal">We are building it. Come join us.</h2>
-        <p class="intro reveal">A proof of concept on the <code>poc/go</code> branch runs the whole demo: capture from Claude Code, find from the CLI and MCP, resume, and the web UI. It is not merged or packaged yet. Read the spec, look through the code, and open an issue for anything that is wrong or unclear.</p>
+        <p class="intro reveal">A proof of concept on the <code>poc/go</code> branch, written in Go, runs the demo from a recorded Claude Code session: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and the web UI. It has not been run against a live session, it has no <code>coal resume</code> yet, and it does not build from a fresh clone. Read the spec, look through the code, and open an issue for anything that is wrong or unclear.</p>
         <p class="found-msg" id="found-msg" aria-live="polite">There are 9 diamonds in the walls on the way down.</p>
         <div class="ctas reveal">
           <a class="btn primary" href="https://github.com/calebtonn/coal/blob/main/docs/02-SPEC.md"><svg aria-hidden="true"><use href="#i-github"/></svg>Read the spec</a>
-          <a class="btn secondary" href="https://github.com/calebtonn/coal/tree/poc/go">See the proof of concept</a>
+          <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/poc/go/docs/poc/STATUS.md">See the proof of concept</a>
           <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/CONTRIBUTING.md">How to help</a>
         </div>
       </div>
@@ -1050,7 +1051,7 @@ footer .right { margin-left: auto; }
     depthEl.textContent = (d === 0 ? "0" : "−" + d) + " m";
     gauge.style.setProperty("--p", Math.min(100, d / 10) + "%");
     gauge.style.setProperty("--k", Math.min(1, d / 1000).toFixed(4));
-    gauge.classList.toggle("on", window.scrollY > 120);
+    gauge.classList.toggle("on", shaft.getBoundingClientRect().top < window.innerHeight * 0.4);
     var under = shaft.getBoundingClientRect().top < topbar.offsetHeight;
     if (under !== isUnder) {
       isUnder = under;

@@ -20,9 +20,15 @@ import sys
 src, dst, stars = sys.argv[1], sys.argv[2], sys.argv[3].strip()
 html = open(src, encoding="utf-8").read()
 badge = ""
-if stars.isdigit() and int(stars) > 0:
+if stars.isascii() and stars.isdigit() and int(stars) > 0:
     n = int(stars)
-    label = f"{n / 1000:.1f}k".replace(".0k", "k") if n >= 1000 else str(n)
+    k = round(n / 1000, 1)
+    if k >= 1000:
+        label = f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    elif n >= 1000:
+        label = f"{k:.1f}k".replace(".0k", "k")
+    else:
+        label = str(n)
     noun = "star" if n == 1 else "stars"
     badge = f'<span class="stars"><svg aria-hidden="true"><use href="#i-star"/></svg><span aria-hidden="true">{label}</span><span class="sr-only">, {n} {noun}</span></span>'
 open(dst, "w", encoding="utf-8").write(html.replace("<!--STARS-->", badge))
