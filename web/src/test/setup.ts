@@ -4,10 +4,10 @@ import { afterEach, vi } from 'vitest';
 
 afterEach(() => {
   cleanup();
-  localStorage.clear();
+  globalThis.localStorage?.clear();
   vi.unstubAllGlobals();
 });
 
-// jsdom has no matchMedia; the theme store and AppShell read it.
-window.matchMedia ??= (query: string) =>
+// jsdom has no matchMedia; the theme store and AppShell read it. Node-environment tests have no window.
+if (typeof window !== 'undefined') window.matchMedia ??= (query: string) =>
   ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList;

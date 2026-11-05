@@ -3,12 +3,11 @@
   import Search from '@lucide/svelte/icons/search';
   import { Alert, AppShell, Input, Page, PageHeader, Select } from '@davenicoll/web-framework';
   import { ThemeSelect, ThemeToggle, type NavSection } from '@davenicoll/web-framework';
-  import { onMount } from 'svelte';
-  import { DaemonUnreachableError, getManifest, getSchema, searchManifests } from './lib/api';
+  import { DaemonUnreachableError, getManifest, searchManifests } from './lib/api';
   import ManifestDetail from './lib/ManifestDetail.svelte';
   import ResultsList from './lib/ResultsList.svelte';
   import type { Manifest, SearchResult } from './lib/types';
-  import { compileValidator, type Validator } from './lib/validate';
+  import { validateManifest } from './lib/validate';
 
   const SEARCH_DEBOUNCE_MS = 200;
   const SEARCH_ID = 'coal-search';
@@ -27,9 +26,8 @@
   let selected = $state(0);
   let openId = $state<string | null>(null);
   let manifest = $state<Manifest | null>(null);
-  let validator = $state<Validator | null>(null);
 
-  const validity = $derived(validator && manifest ? validator(manifest) : null);
+  const validity = $derived(manifest ? validateManifest(manifest) : null);
   const filtered = $derived(query.trim() !== '' || status !== '');
 
   const describe = (err: unknown) =>
@@ -76,8 +74,6 @@
     const r = results[index];
     if (r) open(r.id);
   }
-
-  onMount(() => void getSchema().then((schema) => (validator = compileValidator(schema)), () => {}));
 
   const isTyping = (el: Element | null) =>
     !!el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || (el as HTMLElement).isContentEditable);

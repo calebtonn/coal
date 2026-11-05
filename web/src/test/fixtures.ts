@@ -1,8 +1,6 @@
 import example from '../../../spec/examples/budget-tracker.manifest.json';
-import schemaJson from '../../../spec/intent-manifest.schema.json';
 import type { Manifest, SearchResult } from '../lib/types';
 
-export const schema: object = schemaJson;
 export const budget = example as unknown as Manifest;
 
 const hex = (c: string) => c.repeat(64);
@@ -67,7 +65,6 @@ export function fakeDaemon(list: SearchResult[] = results) {
   return async (input: RequestInfo | URL): Promise<Response> => {
     const url = new URL(String(input), 'http://127.0.0.1:4242');
     if (url.pathname === '/api/manifests') return json({ results: list });
-    if (url.pathname === '/api/schema') return json(schema);
     if (url.pathname.startsWith('/api/manifests/')) {
       const m = manifests.get(decodeURIComponent(url.pathname.slice('/api/manifests/'.length)));
       return m ? json(m) : new Response('not found', { status: 404 });

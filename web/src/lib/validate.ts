@@ -1,22 +1,13 @@
-import Ajv2020 from 'ajv/dist/2020';
-import addFormats from 'ajv-formats';
+import validate from '../generated/validate-manifest.js';
 
 export interface Validity {
   valid: boolean;
   error?: string;
 }
 
-export type Validator = (manifest: unknown) => Validity;
-
-/** Compile the Intent Manifest schema (JSON Schema 2020-12) once. */
-export function compileValidator(schema: object): Validator {
-  const ajv = new Ajv2020({ allErrors: false, strict: false });
-  addFormats(ajv);
-  const check = ajv.compile(schema);
-  return (manifest) => {
-    if (check(manifest)) return { valid: true };
-    const first = check.errors?.[0];
-    const where = first?.instancePath || '/';
-    return { valid: false, error: first ? `${where} ${first.message ?? 'is invalid'}` : 'is invalid' };
-  };
+/** Check a manifest against the schema with the validator generated at build time. */
+export function validateManifest(manifest: unknown): Validity {
+  if (validate(manifest)) return { valid: true };
+  const first = validate.errors?.[0];
+  return { valid: false, error: first ? `${first.instancePath || '/'} ${first.message ?? 'is invalid'}` : 'is invalid' };
 }

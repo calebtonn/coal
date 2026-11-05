@@ -1,9 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { budget, exporter, fakeDaemon, schema } from '../test/fixtures';
+import { budget, exporter, fakeDaemon } from '../test/fixtures';
 import ManifestDetail from './ManifestDetail.svelte';
-import { compileValidator } from './validate';
+import { validateManifest as validate } from './validate';
 
 describe('ManifestDetail', () => {
   it('shows intent, state, provenance and contexts', () => {
@@ -46,7 +46,6 @@ describe('ManifestDetail', () => {
   });
 
   it('shows valid or invalid against the schema', () => {
-    const validate = compileValidator(schema);
     const { unmount } = render(ManifestDetail, { manifest: budget, validity: validate(budget) });
     expect(screen.getByText('valid')).toBeInTheDocument();
     unmount();

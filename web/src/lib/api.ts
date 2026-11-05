@@ -26,10 +26,6 @@ export async function getManifest(id: string): Promise<Manifest> {
   return (await get(`/api/manifests/${encodeURIComponent(id)}`)).json();
 }
 
-export async function getSchema(): Promise<object> {
-  return (await get('/api/schema')).json();
-}
-
 /** `sha256:<hex>` to the `/api/artifacts/<hex>` URL. */
 export function artifactUrl(hash: string): string {
   return `/api/artifacts/${hash.replace(/^sha256:/, '')}`;
