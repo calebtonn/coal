@@ -3,12 +3,7 @@
 package manifest
 
 import (
-	"bytes"
 	"encoding/json"
-	"reflect"
-	"sort"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,13 +42,13 @@ type Manifest struct {
 	Artifacts  []Artifact                 `json:"artifacts"`
 	State      State                      `json:"state"`
 	Provenance Provenance                 `json:"provenance"`
-	Links      []Link                     `json:"links,omitempty"`
-	Contexts   []Context                  `json:"contexts,omitempty"`
+	Links      []Link                     `json:"links,omitzero"`
+	Contexts   []Context                  `json:"contexts,omitzero"`
 	Owner      *Owner                     `json:"owner,omitempty"`
 	Privacy    *Privacy                   `json:"privacy,omitempty"`
 	CreatedAt  string                     `json:"createdAt"`
 	UpdatedAt  string                     `json:"updatedAt"`
-	Ext        map[string]json.RawMessage `json:"ext,omitempty"`
+	Ext        map[string]json.RawMessage `json:"ext,omitzero"`
 
 	Extra map[string]json.RawMessage `json:"-"`
 }
@@ -62,8 +57,10 @@ type Manifest struct {
 type Intent struct {
 	Summary string   `json:"summary"`
 	Goal    string   `json:"goal,omitempty"`
-	Tags    []string `json:"tags,omitempty"`
+	Tags    []string `json:"tags,omitzero"`
 	Source  string   `json:"source,omitempty"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // Artifact is something produced toward the intent. The top-level hash,
@@ -81,7 +78,9 @@ type Artifact struct {
 	Skipped   string            `json:"skipped,omitempty"`
 	// Ext holds namespaced extensions, such as an Agent Trace reference
 	// under "dev.agent-trace" (ADR-015).
-	Ext map[string]json.RawMessage `json:"ext,omitempty"`
+	Ext map[string]json.RawMessage `json:"ext,omitzero"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // ArtifactVersion is one recorded body of an artifact.
@@ -91,14 +90,18 @@ type ArtifactVersion struct {
 	CreatedAt string     `json:"createdAt"`
 	Producer  Provenance `json:"producer"`
 	Skipped   string     `json:"skipped,omitempty"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // State is where the work stands.
 type State struct {
 	LastActivityAt string   `json:"lastActivityAt"`
 	NextStep       string   `json:"nextStep,omitempty"`
-	OpenQuestions  []string `json:"openQuestions,omitempty"`
+	OpenQuestions  []string `json:"openQuestions,omitzero"`
 	Summary        string   `json:"summary,omitempty"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // Provenance records which tool wrote something.
@@ -107,12 +110,16 @@ type Provenance struct {
 	Model      string `json:"model,omitempty"`
 	SessionRef string `json:"sessionRef,omitempty"`
 	CapturedBy string `json:"capturedBy,omitempty"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // Link relates this manifest to another.
 type Link struct {
 	Rel string `json:"rel"`
 	ID  string `json:"id"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // Context is a place or moment where the intent is relevant.
@@ -120,16 +127,22 @@ type Context struct {
 	Kind  string `json:"kind"`
 	Key   string `json:"key"`
 	Label string `json:"label,omitempty"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // Owner identifies who the manifest belongs to.
 type Owner struct {
 	ID string `json:"id"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // Privacy sets who may see the manifest.
 type Privacy struct {
 	Scope string `json:"scope"`
+
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // NewID returns a lowercase UUIDv7.
@@ -186,39 +199,10 @@ func (m *Manifest) Marshal() ([]byte, error) {
 // fields is the manifest type without its JSON methods.
 type fields Manifest
 
-var knownKeys = sync.OnceValue(func() map[string]bool {
-	keys := map[string]bool{}
-	t := reflect.TypeFor[fields]()
-	for i := range t.NumField() {
-		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
-		if name != "" && name != "-" {
-			keys[name] = true
-		}
-	}
-	return keys
-})
-
 // UnmarshalJSON decodes known fields and keeps the rest in Extra.
-func (m *Manifest) UnmarshalJSON(data []byte) error {
-	var f fields
-	if err := json.Unmarshal(data, &f); err != nil {
-		return err
-	}
-	var all map[string]json.RawMessage
-	if err := json.Unmarshal(data, &all); err != nil {
-		return err
-	}
-	f.Extra = nil
-	for k, v := range all {
-		if !knownKeys()[k] {
-			if f.Extra == nil {
-				f.Extra = map[string]json.RawMessage{}
-			}
-			f.Extra[k] = v
-		}
-	}
-	*m = Manifest(f)
-	return nil
+func (m *Manifest) UnmarshalJSON(data []byte) (err error) {
+	m.Extra, err = decodeExtra(data, (*fields)(m))
+	return
 }
 
 // MarshalJSON encodes known fields, then any Extra fields in key order.
@@ -228,26 +212,5 @@ func (m Manifest) MarshalJSON() ([]byte, error) {
 	if f.Artifacts == nil {
 		f.Artifacts = []Artifact{}
 	}
-	b, err := json.Marshal(f)
-	if err != nil || len(m.Extra) == 0 {
-		return b, err
-	}
-	keys := make([]string, 0, len(m.Extra))
-	for k := range m.Extra {
-		if !knownKeys()[k] {
-			keys = append(keys, k)
-		}
-	}
-	sort.Strings(keys)
-	var buf bytes.Buffer
-	buf.Write(b[:len(b)-1])
-	for _, k := range keys {
-		kb, _ := json.Marshal(k)
-		buf.WriteByte(',')
-		buf.Write(kb)
-		buf.WriteByte(':')
-		buf.Write(m.Extra[k])
-	}
-	buf.WriteByte('}')
-	return buf.Bytes(), nil
+	return encodeExtra(f, m.Extra)
 }

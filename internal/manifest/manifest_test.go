@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -202,5 +203,55 @@ func TestArtifactAgentTraceExtRoundTrips(t *testing.T) {
 	})
 	if err := Validate(bad); err == nil || !strings.Contains(err.Error(), "/artifacts/0/ext") {
 		t.Fatalf("want an /artifacts/0/ext error, got %v", err)
+	}
+}
+
+// TestUnknownFieldsSurviveAtEveryLevel rewrites a manifest with an unknown
+// key on every object and expects the same document back, including the
+// empty arrays the example carries.
+func TestUnknownFieldsSurviveAtEveryLevel(t *testing.T) {
+	future := map[string]any{"n": 1.0, "list": []any{"a"}}
+	b := mutate(t, func(m map[string]any) {
+		obj := func(v any) map[string]any { return v.(map[string]any) }
+		m["owner"] = map[string]any{"id": "user:local"}
+		m["links"] = []any{map[string]any{"rel": "related", "id": "019a3f2c-8e4b-7d31-9a5c-2f6b1c8d4e70"}}
+		m["intent"].(map[string]any)["tags"] = []any{}
+		m["state"].(map[string]any)["openQuestions"] = []any{}
+		art := obj(m["artifacts"].([]any)[0])
+		art["ext"] = map[string]any{"dev.agent-trace": map[string]any{"uri": "https://example.com/t.json"}}
+		ver := obj(art["versions"].([]any)[0])
+		for _, o := range []map[string]any{
+			m, obj(m["intent"]), obj(m["state"]), obj(m["provenance"]), obj(m["owner"]), obj(m["privacy"]),
+			obj(m["links"].([]any)[0]), obj(m["contexts"].([]any)[0]),
+			art, obj(art["producer"]), ver, obj(ver["producer"]),
+		} {
+			o["x-future"] = future
+		}
+	})
+	m, err := Parse(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := m.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Validate(out); err != nil {
+		t.Fatal(err)
+	}
+	var want, got map[string]any
+	json.Unmarshal(b, &want)
+	json.Unmarshal(out, &got)
+	if !reflect.DeepEqual(got, want) {
+		w, _ := json.MarshalIndent(want, "", " ")
+		g, _ := json.MarshalIndent(got, "", " ")
+		t.Fatalf("rewrite changed the document\nwant %s\ngot  %s", w, g)
+	}
+	if bytes.Count(out, []byte(`"x-future"`)) != 12 {
+		t.Errorf("want 12 x-future keys in\n%s", out)
+	}
+	// A decode replaces earlier contents rather than merging into them.
+	if err := json.Unmarshal([]byte(`{"summary":"s"}`), &m.Intent); err != nil || m.Intent.Extra != nil || m.Intent.Tags != nil {
+		t.Errorf("decode merged: %+v %v", m.Intent, err)
 	}
 }
