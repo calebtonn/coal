@@ -95,20 +95,37 @@ func hookCommand(bin, home, arg string) string {
 	return cmd
 }
 
-// isOurs reports whether a hook handler runs this coal binary's hook.
+// isOurs reports whether a hook handler runs `coal hook <event>` for
+// one of the adapter's events, from any directory, so a moved or
+// rebuilt binary replaces its old entries instead of adding more. The
+// running binary bin also counts under any name.
 func isOurs(h any, bin string) bool {
 	m, ok := h.(map[string]any)
 	if !ok {
 		return false
 	}
 	c, _ := m["command"].(string)
-	return strings.Contains(c, " hook ") && (strings.Contains(c, bin) || strings.Contains(c, shellQuote(bin)))
+	for _, ah := range adapterHooks {
+		prog, _, found := strings.Cut(c+" ", " hook "+ah.arg+" ")
+		if !found {
+			continue
+		}
+		fields := strings.Fields(prog)
+		if len(fields) == 0 {
+			continue
+		}
+		if p := strings.Trim(fields[len(fields)-1], `'"`); filepath.Base(p) == "coal" || p == bin || strings.HasSuffix(prog, shellQuote(bin)) {
+			return true
+		}
+	}
+	return false
 }
 
 // editSettings removes this binary's hooks from the settings file and,
 // when install is set, adds them back, so install is idempotent. Other
-// settings and hooks are kept. The previous content goes to <file>.bak
-// and the new file is written atomically.
+// settings and hooks are kept. The content before the first change goes
+// to <file>.bak, which is never overwritten, and the new file is written
+// atomically.
 func editSettings(path, bin, home string, install bool) error {
 	old, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -184,7 +201,8 @@ func editSettings(path, bin, home string, install bool) error {
 	if bytes.Equal(data, old) {
 		return nil
 	}
-	if old != nil {
+	// Keep the first .bak: it holds the settings from before COAL.
+	if _, err := os.Stat(path + ".bak"); old != nil && errors.Is(err, fs.ErrNotExist) {
 		if err := writeFileAtomic(path+".bak", old); err != nil {
 			return err
 		}

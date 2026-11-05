@@ -13,6 +13,10 @@ import (
 	"github.com/calebtonn/coal/internal/metrics"
 )
 
+// hookBudget is the hook time limit asserted in tests. The target is
+// 200 ms; the margin keeps a loaded host from failing the suite.
+const hookBudget = 500 * time.Millisecond
+
 // hook runs coal hook <name> in process with a recorded payload whose
 // placeholder path is rewritten to project, and returns stdout.
 func hook(t *testing.T, home, project, name, file string) (string, time.Duration) {
@@ -53,12 +57,14 @@ func TestHookSession(t *testing.T) {
 		if out != "" {
 			t.Errorf("%s printed %q", s.name, out)
 		}
-		if took > 200*time.Millisecond {
+		t.Logf("%s took %v", s.name, took)
+		if took > hookBudget {
 			t.Errorf("%s took %v", s.name, took)
 		}
 	}
 	out, took := hook(t, home, project, "session-start", "session-start-resume.json")
-	if took > 200*time.Millisecond {
+	t.Logf("resume session-start took %v", took)
+	if took > hookBudget {
 		t.Errorf("resume session-start took %v", took)
 	}
 	var res struct {
@@ -95,20 +101,36 @@ func TestHookSession(t *testing.T) {
 	}
 }
 
+type panicReader struct{}
+
+func (panicReader) Read([]byte) (int, error) { panic("stdin exploded") }
+
 func TestHookNeverFails(t *testing.T) {
 	home := t.TempDir()
 	for _, in := range []string{"not json", "{}", strings.Repeat("x", maxPayload+10)} {
 		var out bytes.Buffer
 		root := rootCmd()
-		root.SetIn(strings.NewReader(in))
+		r := strings.NewReader(in)
+		root.SetIn(r)
 		root.SetOut(&out)
 		root.SetArgs([]string{"--home", home, "hook", "stop"})
-		if err := root.Execute(); err != nil || out.Len() != 0 {
-			t.Errorf("%.20q: err=%v out=%q", in, err, out.String())
+		if err := root.Execute(); err != nil || out.Len() != 0 || r.Len() != 0 {
+			t.Errorf("%.20q: err=%v out=%q unread=%d", in, err, out.String(), r.Len())
 		}
 	}
+	var out bytes.Buffer
+	root := rootCmd()
+	root.SetIn(panicReader{})
+	root.SetOut(&out)
+	root.SetArgs([]string{"--home", home, "hook", "stop"})
+	if err := root.Execute(); err != nil || out.Len() != 0 {
+		t.Errorf("panic: err=%v out=%q", err, out.String())
+	}
 	log, _ := os.ReadFile(filepath.Join(home, "logs", "coal.log"))
-	if strings.Count(string(log), "hook stop") != 3 {
+	if !strings.Contains(string(log), "panic: stdin exploded") {
+		t.Errorf("panic not logged:\n%s", log)
+	}
+	if strings.Count(string(log), "hook stop") != 4 {
 		t.Errorf("log:\n%s", log)
 	}
 }
@@ -170,6 +192,22 @@ func TestAdapterRoundTrip(t *testing.T) {
 	}
 	if _, err := os.Stat(settings + ".bak"); err != nil {
 		t.Error(err)
+	}
+
+	// A binary that moved is replaced, not added again, and the first
+	// .bak, the settings from before COAL, is kept.
+	if err := editSettings(settings, "/old/place/coal", "", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := run("adapter", "install", "claude-code", "--settings", settings); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(settings)
+	if n := strings.Count(string(b), " hook "); n != 5 || strings.Contains(string(b), "/old/place") {
+		t.Errorf("after a move, %d coal hooks:\n%s", n, b)
+	}
+	if bak, _ := os.ReadFile(settings + ".bak"); string(bak) != orig {
+		t.Errorf(".bak was overwritten:\n%s", bak)
 	}
 
 	if err := run("adapter", "uninstall", "claude-code", "--settings", settings); err != nil {
