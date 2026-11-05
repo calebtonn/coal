@@ -436,12 +436,36 @@ func TestPatchActivityAndStamp(t *testing.T) {
 		t.Fatalf("state change: lastActivityAt %s stamp %+v %v", got.State.LastActivityAt, stamp, ok)
 	}
 
-	// Setting the same value again changes nothing, so no fresh stamp.
+	// Setting the same value again, or an empty list where there is none
+	// (Fable review 2), changes nothing: no write, no new rev, no bump.
 	setOld()
-	res, body = do(t, srv, "PATCH", "/api/manifests/"+m.ID, `{"state":{"nextStep":"Add CSV export"}}`)
-	want(t, res, body, 200)
-	if got, _ = a.Get(m.ID); got.State.LastActivityAt != old {
-		t.Fatal("a no-op state PATCH bumped lastActivityAt")
+	before, _ := a.Get(m.ID)
+	for _, patch := range []string{
+		`{"state":{"nextStep":"Add CSV export"}}`,
+		`{"state":{"openQuestions":[]}}`,
+		`{"state":{"openQuestions":null,"summary":null}}`,
+		`{"intent":{"goal":"Track spending"},"status":"paused"}`,
+	} {
+		res, body = do(t, srv, "PATCH", "/api/manifests/"+m.ID, patch)
+		want(t, res, body, 200)
+		got, _ = a.Get(m.ID)
+		if got.Rev != before.Rev || got.State.LastActivityAt != old || res.Header.Get("ETag") != fmt.Sprintf(`"%d"`, before.Rev) {
+			t.Fatalf("no-op PATCH %s: rev %d -> %d, lastActivityAt %s", patch, before.Rev, got.Rev, got.State.LastActivityAt)
+		}
+	}
+}
+
+func TestStateChanged(t *testing.T) {
+	base := manifest.State{LastActivityAt: "2020-01-01T00:00:00Z", NextStep: "x"}
+	same := base
+	same.OpenQuestions, same.LastActivityAt = []string{}, "2026-01-01T00:00:00Z"
+	if StateChanged(base, same) {
+		t.Error("an empty openQuestions or a new lastActivityAt counted as a change")
+	}
+	diff := base
+	diff.OpenQuestions = []string{"q"}
+	if !StateChanged(base, diff) {
+		t.Error("a new open question did not count as a change")
 	}
 }
 

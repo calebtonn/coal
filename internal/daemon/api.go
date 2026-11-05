@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -267,12 +266,16 @@ func (s *server) patch(w http.ResponseWriter, r *http.Request) {
 		if len(p) == 0 {
 			return store.ErrNoChange
 		}
-		status, state := m.Status, m.State
+		status, state, intent := m.Status, m.State, m.Intent
 		state.OpenQuestions = slices.Clone(state.OpenQuestions)
+		intent.Tags = slices.Clone(intent.Tags)
 		if err := applyPatch(m, p); err != nil {
 			return err
 		}
-		stateChanged := !reflect.DeepEqual(state, m.State)
+		stateChanged := StateChanged(state, m.State)
+		if !stateChanged && status == m.Status && !intentChanged(intent, m.Intent) {
+			return store.ErrNoChange
+		}
 		if stateChanged || status != m.Status {
 			m.State.LastActivityAt = manifest.Now()
 		}
@@ -296,6 +299,21 @@ func (s *server) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeManifest(w, http.StatusOK, m)
+}
+
+// StateChanged reports whether after differs from before in what a writer
+// records on purpose. The rule: nextStep, summary or openQuestions differ,
+// where openQuestions compares element by element so nil and [] are the
+// same. lastActivityAt is ignored, so a bumped timestamp alone is no
+// change. The MCP server's coal_update_state should use the same rule.
+func StateChanged(before, after manifest.State) bool {
+	return before.NextStep != after.NextStep || before.Summary != after.Summary ||
+		!slices.Equal(before.OpenQuestions, after.OpenQuestions)
+}
+
+func intentChanged(before, after manifest.Intent) bool {
+	return before.Summary != after.Summary || before.Goal != after.Goal || before.Source != after.Source ||
+		!slices.Equal(before.Tags, after.Tags)
 }
 
 // patchable lists the fields PATCH may change. intent.summary is not one:
