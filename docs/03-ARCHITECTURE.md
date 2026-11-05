@@ -57,23 +57,43 @@ Two packages. `diamond` has no runtime dependency on anything else in the repo. 
 sequenceDiagram
     participant U as User
     participant CC as Claude Code
-    participant H as COAL hook
-    participant M as MCP server
+    participant H as COAL hooks
     participant S as Storage
+    participant Q as Queue worker
 
     U->>CC: "Build me an HTML budget tracker"
     CC->>CC: writes budget.html
     CC->>H: PostToolUse(Write, budget.html)
-    H->>M: coal_record_intent (lazy, first write)
-    M->>S: manifests/<id>.json
-    H->>M: coal_register_artifact(budget.html)
-    M->>S: artifacts/<sha256>, manifest updated
+    H->>S: match or create manifest, write contexts[] and .coal
+    H->>S: register artifact (sha256)
+    CC->>H: Stop (every turn)
+    H->>S: bump lastActivityAt
     U->>CC: ends session
-    CC->>H: Stop
-    H->>CC: ask for summary + nextStep
-    H->>M: coal_update_state
-    M->>S: manifest updated
+    CC->>H: SessionEnd (1.5 s budget)
+    H->>S: queue/<session>.json
+    Q->>S: later: fill state.summary if the model did not
 ```
+
+## Resume flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant CLI as coal resume
+    participant CC as Claude Code
+    participant H as COAL hooks
+    participant S as Storage
+
+    U->>CLI: coal resume (in the budget directory)
+    CLI->>S: match manifest by .coal or contexts[]
+    CLI->>CC: launch with first prompt: open from nextStep
+    CC->>H: SessionStart
+    H->>S: read manifest
+    H-->>CC: systemMessage banner + additionalContext
+    CC-->>U: "You left off at CSV export. Continue?"
+```
+
+Plain `claude` without the launcher gets the banner and context from the hook, and the first reply (after the user types anything) opens by offering to continue.
 
 ## Find and resume flow (any tool)
 

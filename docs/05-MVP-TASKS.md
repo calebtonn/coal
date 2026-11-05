@@ -55,19 +55,19 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 ## Week 3: Capture
 
 ### T08. Claude Code adapter (`coal adapter install claude-code`)
-- Hook scripts that shell out to the `coal` binary for `SessionStart`, `PostToolUse`, `Stop`
-- `intent.summary` = the user's first message of the session, trimmed; `intent.source` = `user`
-- `Stop` writes the model's proposed summary to `state.summary` and `intent.goal`, never over `intent.summary`
-- `coal adapter install claude-code` merges hook config into `~/.claude/settings.json` without clobbering existing hooks
-- `coal adapter uninstall claude-code`
-- Lazy manifest creation on first qualifying write; session id from hook payload becomes `sessionRef`
-- `Stop` hook requests summary and `nextStep` from the session transcript (use the hook's transcript path)
-- **Accept:** The definition-of-done demo step 1 in `CLAUDE.md` works
+- Internal capture contract per ADR-011; the Claude Code adapter translates hook payloads into it
+- Hooks: `SessionStart`, `PostToolUse`, `Stop`, `SessionEnd`, behaving exactly as F5
+- `coal adapter install claude-code` merges hook config into `~/.claude/settings.json` without clobbering existing hooks; `uninstall` reverses it
+- Lazy manifest creation writes `contexts[]` and the `.coal` marker (ADR-013); a second session in the same directory attaches, never creates
+- `SessionEnd` only queues; the queue worker fills `state.summary` as F5 says
+- **Accept:** definition-of-done step 1 passes; a second session in the demo directory adds to the same manifest; `SessionEnd` returns in under 500 ms on a cold disk
 
-### T09. Session resume context (headline feature)
-- `SessionStart` hook matches manifests by `contexts[]`: a `path` or `repo` context whose key contains cwd, plus any artifact whose `uri` is under cwd
-- Injects: summary, nextStep, openQuestions, artifact list as additional context, with an instruction to open by offering to continue
-- **Accept:** Starting Claude Code in the demo directory, the first assistant turn says in substance "You left off at CSV export. Continue?" before the user types. This is step 3 of the definition of done.
+### T09. Resume (headline feature)
+- `SessionStart` matching per F5.1, with the tests listed there
+- Banner via `systemMessage`; verify how the current Claude Code build displays it and adjust
+- `additionalContext` carrying summary, nextStep, openQuestions, artifacts, and the open-by-offering-to-continue instruction
+- `coal resume`: finds the manifest, launches `claude` with a first prompt supplied, so the first turn is the resume
+- **Accept:** definition-of-done step 3 passes in both forms: plain `claude` shows the banner before the user types and the first reply offers to continue; `coal resume` opens with the resume as the first turn
 
 ## Week 4: Web UI
 
@@ -80,7 +80,8 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 
 ## Week 5: Hardening
 
-### T11. Error handling and logging
+### T11. Error handling, logging, history
+- `~/.coal/` becomes a git repo on `coal init` if `git` is on PATH (ADR-014); the daemon commits debounced, never from a hook; `coal log <id>` shows a manifest's history
 - Every CLI and MCP error is a one-line human message plus `--verbose` stack
 - Daemon logs rotate
 - Corrupt manifest file is skipped with a warning, not fatal

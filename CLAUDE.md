@@ -58,9 +58,9 @@ pnpm --filter @coal/coal link       # makes `coal` available on PATH
 
 The MVP is done when this demo works end to end on a clean machine:
 
-1. In a Claude Code session with the COAL hooks installed, ask Claude to build an HTML budget tracker. On session stop, a manifest appears in `~/.coal/manifests/` with the intent summary and the HTML registered as an artifact.
+1. In a Claude Code session with the COAL hooks installed, ask Claude to build an HTML budget tracker. As the file is written, a manifest appears in `~/.coal/manifests/` with the intent summary, the HTML registered as an artifact, and a `.coal` marker in the directory. After the session ends, the queue worker has filled `state.summary` and `nextStep` is set (by the model through `coal_update_state`, or by extraction).
 2. In a different tool connected to the COAL MCP server (Claude Desktop, Cursor, or Claude Code in another directory), ask "find the budget thing I built." The tool calls `coal_find`, gets the manifest back, and can open or read the artifact.
-3. Start a new Claude Code session in the budget directory. Before the user types anything, the first assistant turn says, in substance, "You left off at CSV export. Continue?" This is the headline feature. It comes from the `SessionStart` hook reading the manifest matched by context.
+3. Resume, the headline feature, in both forms. (a) Run plain `claude` in the budget directory: before the user types anything, the terminal shows a COAL line with the next step; the first assistant reply offers to continue from it. (b) Run `coal resume` in the same directory: the first assistant turn is the resume, in substance "You left off at CSV export. Continue?" The demo uses (b). See ADR-016.
 4. `coal find "budget"` on the command line returns the same result.
 5. `http://127.0.0.1:4242` shows the manifest with a preview of the HTML.
 

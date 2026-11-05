@@ -70,6 +70,8 @@ A file or URI produced during a session. Registered artifacts are copied into co
 - `coal open <id> [--artifact n]` opens the artifact with the OS default handler
 - `coal reindex`
 - `coal mcp` runs the MCP server on stdio (used by tool configs)
+- `coal resume [--tool claude-code]` finds the manifest for the current directory and launches the harness with a first prompt that asks it to open from the next step
+- `coal new` creates a second manifest in a directory that already has one and makes it active (ADR-013)
 
 ### F4. MCP server
 
@@ -90,13 +92,15 @@ Resources exposed:
 
 ### F5. Claude Code adapter
 
-A hook set that installs into `~/.claude/settings.json` (or project `.claude/settings.json`):
+Implements the capture contract from ADR-011 (`sessionStart`, `fileWritten`, `turnEnd`, `sessionEnd`) against Claude Code hooks. Installs into `~/.claude/settings.json` with `coal adapter install claude-code`.
 
-- `SessionStart`: if the working directory maps to an existing manifest (by a `.coal` marker file or path match), inject its summary and `nextStep` as context.
-- `PostToolUse` on `Write` / `Edit` for `*.html`, `*.md`, `*.py`, `*.ts`, `*.tsx`: register the file as an artifact on the session's manifest (creating the manifest lazily on first write, with the session's first user message as the intent summary).
-- `Stop`: ask the model for a one-line intent summary and a `nextStep`, write them to the manifest.
+- `SessionStart`: match a manifest for `cwd` (F5.1). If found: print a `systemMessage` banner (`COAL: <summary>. Next: <nextStep>. <n> open questions.`) and inject `additionalContext` with summary, nextStep, openQuestions, artifact list, and an instruction to open the first reply by offering to continue. Then drain `~/.coal/queue/`.
+- `PostToolUse` on `Write` / `Edit` for `*.html`, `*.md`, `*.py`, `*.ts`, `*.tsx`: attach to the matched active manifest; if none, create one lazily with `intent.summary` = the session's first user message (trimmed to 200 chars), `intent.source` = `user`, and `contexts[]` = `{kind: path, key: <git top level, else cwd>}` plus `{kind: repo, key: <normalized origin URL>}` when there is a remote. Write the `.coal` marker (ADR-013) unless `markers: none`. Register the file as an artifact.
+- `Stop`: bump `state.lastActivityAt` only.
+- `SessionEnd`: write `~/.coal/queue/<sessionId>.json` (session id, transcript path, cwd) and return within the budget. No summary work here.
+- Queue worker (run by the daemon or the next `SessionStart`): for each job, if the model recorded state through `coal_update_state`, nothing more; else extract `state.summary` deterministically from the transcript; if `config.summarizer` is set, run it instead. Then delete the job.
 
-Install with `coal adapter install claude-code`.
+F5.1 Matching. A `.coal` marker in `cwd` or any parent up to the git top level wins. Otherwise match `contexts[]`: a `path` context matches when `realpath(cwd) === key` or starts with `key + sep`; a `repo` context matches when the cwd's normalized remote equals the key. Prefer the longest matching key. Tests cover: subdirectory, sibling with shared prefix (`budget` vs `budget-old`), home directory, two clones of one remote.
 
 ### F6. Web UI
 

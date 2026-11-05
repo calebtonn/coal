@@ -15,7 +15,7 @@ COAL keeps a record of that work outside any one tool. For each thing you were w
 - the artifacts, content-addressed, with which tool and model produced them
 - the state: last activity, next step, open questions
 
-It runs on your machine. The record is a folder of JSON files you can read with any editor. Any tool that speaks MCP can search it and write to it. When you start a new session in a folder that has a record, the tool opens by telling you where you left off.
+It runs on your machine. The record is a folder of JSON files you can read with any editor. Any tool that speaks MCP can search it and write to it. Start a new session in a folder that has a record and the next step is on screen before you type. Start it with `coal resume` and the first thing the tool says is where you left off.
 
 ## Status
 
@@ -62,8 +62,9 @@ The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds
 ### Phase 1: Record (the MVP, six weeks)
 
 - Intent Manifest v0.1, with a published schema, an example and a validator
-- Claude Code hooks: capture on write, summarize on stop
-- Resume: a new session opens with the next step before you type
+- Claude Code hooks: capture on write, queue the summary at session end
+- Resume: the next step on screen before you type; `coal resume` opens the session from it
+- History: `~/.coal/` is a git repo, committed by the daemon
 - MCP server, `coal` CLI, local web UI
 - Two packages: `diamond` and `coal`
 

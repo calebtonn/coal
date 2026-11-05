@@ -84,7 +84,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-011: One capture contract, adapters for every coding agent with hooks
 
-**Status.** Proposed. Amends ADR-003.
+**Status.** Accepted 2026-11-05. Amends ADR-003.
 
 **Context.** ADR-003 chose Claude Code because it was the only mainstream tool with lifecycle hooks. That is no longer true (#8): Cursor, Codex CLI and Gemini CLI all have session, tool and stop or end events, and all pass JSON on stdin. If the Claude Code adapter is written as a special case, each later tool means rework, and Phase 2's "Reach" stays expensive for no reason.
 
@@ -94,7 +94,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-012: Import from session records already on disk
 
-**Status.** Proposed.
+**Status.** Accepted 2026-11-05. First Phase 2 item.
 
 **Context.** The case that started COAL is a page buried in a claude.ai chat, and the MVP only serves it through a manual `coal add`. Browser capture is the planned fix, and ADR-003 already notes it is fragile. Meanwhile every coding agent writes its sessions to disk (Claude Code under `~/.claude/projects/`, Codex under `~/.codex/sessions/`), and claude.ai and ChatGPT both offer account data exports. Live capture also starts from an empty record, so the week six retro measures a record with only six weeks in it.
 
@@ -104,7 +104,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-013: The project directory anchors the intent
 
-**Status.** Proposed.
+**Status.** Accepted 2026-11-05, with the `markers` setting. Resolves #4.
 
 **Context.** Sessions are not intents. One session can touch several intents, and one intent runs across many sessions and tools. Matching sessions to manifests is the hardest part of capture, and the current spec leaves it open (#4). For coding work there is already a boundary the user chose: the project directory. F5 mentions a `.coal` marker file but nothing defines it.
 
@@ -114,7 +114,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-014: Keep history of manifest changes
 
-**Status.** Proposed.
+**Status.** Accepted 2026-11-05 with two constraints: commits never run inside a hook (SessionEnd has a 1.5 s budget); the daemon or queue worker commits, debounced, under the same per-manifest lock as the write (#6). Uses the `git` on PATH; if none, skip silently. Lands in T11.
 
 **Context.** Manifests are mutable. `nextStep`, `status` and `openQuestions` are overwritten in place, so there is no way to answer "what was next last week", to see when an intent was abandoned, or to recover from a bad write by a model.
 
@@ -126,10 +126,24 @@ Considered: an append-only event log per manifest with the manifest as a project
 
 ## ADR-015: Use Agent Trace for line-level code provenance
 
-**Status.** Proposed.
+**Status.** Accepted 2026-11-05.
 
 **Context.** Each artifact carries a `producer` (tool, model, session). Agent Trace, published by Cursor in January 2026 under CC BY 4.0 and supported by Cognition, OpenCode and others, is an open, storage-agnostic spec that links code ranges to the conversations and contributors behind them. The README says the schema is the product. A second provenance format next to an emerging standard would compete with it rather than build on it.
 
 **Decision.** `producer` stays minimal: tool, model, sessionRef. COAL does not add line-level attribution to the manifest. When an Agent Trace record exists for a code artifact, or an adapter can produce one, the artifact references it under `ext["dev.agent-trace"]` with the record's URI or hash. COAL owns intent and state; Agent Trace owns which lines came from where.
 
 **Consequences.** Code provenance from COAL can be read by tools that adopt Agent Trace, at the cost of one extension key. Agent Trace is still a draft, so the reference stays under `ext` until v1.0 of both specs, when it can be reconsidered as a first-class field. Reference: https://agent-trace.dev/
+
+## ADR-016: Capture lifecycle and the resume moment
+
+**Status.** Accepted 2026-11-05. Resolves #1, #2, #3.
+
+**Context.** The first draft assumed `Stop` meant end of session, that a hook could ask the running model for a summary, and that a `SessionStart` hook could make the assistant speak before the user typed. None of those are true of Claude Code hooks: `Stop` fires after every assistant turn, `SessionEnd` is the per-session event with a 1.5 second budget, a command hook cannot query the session's model, and no assistant turn happens until the user sends one.
+
+**Decision.**
+- `PostToolUse` and `Stop` do cheap work only: register artifacts, bump `state.lastActivityAt`.
+- `SessionEnd` writes a job file under `~/.coal/queue/` and returns. The daemon or the next `SessionStart` drains the queue. Sessions that never end cleanly are drained the same way.
+- Summaries: the model records its own state through `coal_update_state`, prompted by `SessionStart` context and the tool description. If nothing was recorded, deterministic extraction from the transcript (last user message, last assistant message, files touched) fills `state.summary`. A headless model call over the transcript is an opt-in `config.json` setting, which counts as a call the user configured. `intent.summary` stays the user's first message (ADR-009).
+- The resume moment has two forms. Plain `claude` in a matched directory: the `SessionStart` hook prints a `systemMessage` banner with the next step before the user types, and injects `additionalContext` so the first reply opens by offering to continue. `coal resume`: a launcher that finds the manifest for the directory and starts the harness with a first prompt already supplied, so the first turn is the resume. The demo uses `coal resume`.
+
+**Consequences.** `coal resume` moves a small piece of the Phase 2 entry-point idea into Phase 1. The headline wording changes from "the tool speaks first before you type" to "the next session opens with the next step." How `SessionStart` output is displayed has changed between Claude Code releases; T09 verifies on the current build.
