@@ -4,22 +4,22 @@
 
 <h1 align="center">COAL</h1>
 <p align="center"><b>Cognitive Orchestration AI Layer</b></p>
-<p align="center">A user-owned record of work that sits between you and every AI tool you use.</p>
+<p align="center">A record of your work that you own and any AI tool can read.</p>
 <p align="center"><a href="https://coalmine.io">coalmine.io</a></p>
 
-You talk to Claude, ChatGPT, Cursor, Claude Code. Each one produces artifacts (HTML pages, scripts, docs, decisions) and each one forgets what you were doing the moment the session ends. The chat is the only index, and the chat is the wrong index. Nobody thinks "which conversation was that in." They think "the budget thing I built last week."
+I use Claude, ChatGPT, Cursor and Claude Code in the same week. Each one produces things: an HTML page, a script, a plan, a decision. Each one forgets what I was doing when the session ends. Last week I spent twenty minutes scrolling through chats looking for a budget tracker I had built, because the only way to find it was to remember which conversation it was in.
 
-COAL fixes that by holding three things the user owns and any AI tool can read:
+COAL keeps a record of that work outside any one tool. For each thing you were working on it stores:
 
-1. **Intent**: what you were trying to do, in your words.
-2. **Artifacts**: what got produced, content-addressed, with provenance.
-3. **State**: where you left off, what is still open, what comes next.
+- the intent, in your own words
+- the artifacts, content-addressed, with which tool and model produced them
+- the state: last activity, next step, open questions
 
-It runs locally. Files on disk are the source of truth. Any model that speaks MCP can query it.
+It runs on your machine. The record is a folder of JSON files you can read with any editor. Any tool that speaks MCP can search it and write to it. When you start a new session in a folder that has a record, the tool opens by telling you where you left off.
 
 ## Status
 
-Pre-MVP. This repo is the build spec. Start with `CLAUDE.md`, then `docs/05-MVP-TASKS.md`.
+Nothing is built yet. This repo is the spec and the task list. If you want to follow along or help, start with `CLAUDE.md` and `docs/05-MVP-TASKS.md`.
 
 ## Layout
 
@@ -42,78 +42,70 @@ coal/
     coal/                       The `coal` CLI: serve, mcp, adapter, find, add, open; web UI under web/
 ```
 
-Two packages on purpose. One installable, one library. Split further only when a second implementer needs a piece on its own.
+Two packages. `diamond` is the library. `coal` is what you install. I will split them further only if someone else needs one piece on its own.
 
-## What the MVP does and does not do
+## What the MVP covers
 
-Capture in the MVP comes from Claude Code only, because it is the one mainstream tool with lifecycle hooks. The pain that started this project (an HTML page buried in a claude.ai chat) is served in the MVP by `coal add` on a downloaded artifact, and properly by browser capture in Phase 2. The MVP proves the record and the resume; it does not yet prove universal capture.
+Capture comes from Claude Code only, because it is the one mainstream tool with lifecycle hooks today. The case that started this (a page buried in a claude.ai chat) is handled in the MVP by running `coal add` on a downloaded file. Browser capture comes in Phase 2. The MVP shows that the record and the resume work with one harness. It does not yet show that capture works everywhere.
 
 ## Phases
 
-**The MVP is Phase 1 and nothing else.** Phases 2 through 4 are the direction, not the plan. Each one is earned by the retro at the end of the phase before it, and only Phase 1 has a date.
+The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds up. Each one starts only after the retro on the one before it. Phase 1 has a date. The others do not.
 
-| Phase | Name | Status | Proves |
+| Phase | Name | Status | What it has to show |
 |---|---|---|---|
-| 1 | Record | **MVP, in progress** | A user-owned record can be captured and read back by a different tool |
-| 2 | Reach | Not started | Capture works across every tool, not just the one with hooks |
-| 3 | Attention | Not started | The record is enough to anticipate, with user-owned rules |
-| 4 | Portability | Not started | This is a standard, not a tool |
+| 1 | Record | MVP, in progress | A record captured in one tool can be read back and resumed in another |
+| 2 | Reach | Not started | Capture works from every tool, including ones with no hooks |
+| 3 | Attention | Not started | The record plus simple rules is enough to surface the right thing at the right time |
+| 4 | Portability | Not started | Someone else's software writes manifests that work here |
 
 ### Phase 1: Record (the MVP, six weeks)
 
-What it proves: a user-owned record of work can be captured without effort and read back by a different tool. The next session can open by offering to continue.
-
-- Intent Manifest v0.1, published schema with validator and example
+- Intent Manifest v0.1, with a published schema, an example and a validator
 - Claude Code hooks: capture on write, summarize on stop
-- Resume: a new session speaks first with the next step
+- Resume: a new session opens with the next step before you type
 - MCP server, `coal` CLI, local web UI
 - Two packages: `diamond` and `coal`
 
-Stop condition: the week six retro. If the author did not reach for it unprompted at least five times in a week, it is a tool, not a layer.
+Done when: the week six retro. If I have not reached for it unprompted at least five times in a week, I stop.
 
 ### Phase 2: Reach
 
-What it proves: the record works across every tool, not just the one with hooks. Capture is not a Claude Code feature.
-
-- `coal import`: build manifests from existing session logs on first run
+- `coal import`: build manifests from the session logs already on disk
 - Browser capture from claude.ai and chatgpt.com
 - Cursor and other MCP writers
 - Semantic search with a local embedding model
-- Launcher integration (Raycast) as the entry point
+- Raycast extension as the entry point
 
-Stop condition: a manifest written by a tool other than Claude Code is found and resumed from a third tool.
+Done when: a manifest written by something other than Claude Code is found and resumed from a third tool.
 
 ### Phase 3: Attention
 
-What it proves: the record is enough to anticipate. The whiteboard loop (sense, model, decide, act) runs on user-owned data with user-owned rules, and people keep it on.
-
 - Signals: calendar, git activity, IDE focus, time of day
-- Surfacing by context, not search
-- Policy engine: editable rules, overrides as the training signal
+- Surfacing by context instead of search
+- Policy engine: editable rules; the user's overrides are the training signal
 - Interrupt gating for Slack and chat
 - Menu bar app for notifications and launching
 
-Stop condition: surfaced items are opened more often than dismissed, and nobody has turned surfacing off.
+Done when: surfaced items get opened more often than dismissed, and nobody has turned surfacing off.
 
 ### Phase 4: Portability
-
-What it proves: this is a standard, not a tool. A second implementer writes manifests and a user moves between stores without loss.
 
 - Spec v1.0 with a second implementer
 - Encrypted multi-device sync
 - Export and import between stores
-- Optional fact-store adapter (for example OpenMemory) for preferences
-- Org install and fleet config, open source like the rest
+- Optional adapter for a preferences store such as OpenMemory
+- Org install and fleet config, open source like everything else
 
-Stop condition: a manifest written by software this repo did not produce validates and resumes here.
+Done when: a manifest written by software this repo did not produce validates and resumes here.
 
 ## Principles
 
-- **Local-first.** Your data lives in `~/.coal/`. No account required to use it.
-- **Files are truth.** Manifests are plain JSON. SQLite is a derived index that can be rebuilt at any time.
-- **Open standard.** The Intent Manifest schema is the product. The daemon is a reference implementation.
-- **User-owned policy.** Any rules about attention, interruption, or routing belong to the user and are readable by the user.
+- Local first. Your data lives in `~/.coal/`. There is no account.
+- Files are the truth. Manifests are plain JSON. SQLite is an index that can be deleted and rebuilt.
+- The schema is the product. The daemon is one implementation of it.
+- Rules about attention, interruption and routing belong to the user and are readable by the user.
 
 ## License
 
-Apache 2.0. See `LICENSE`. COAL is and will stay open source: the schema, the library, the CLI, every adapter, and the policy engine when it exists. There is no paid tier planned.
+Apache 2.0. See `LICENSE`. All of it is open source: the schema, the library, the CLI, every adapter, and the policy engine when it exists. No paid tier.
