@@ -2,6 +2,10 @@
 
 Instructions for Claude Code working in this repository.
 
+## If you are not working for the maintainer
+
+The build order below is the maintainer's plan. If the person you are working for is an outside contributor, do not start building tasks from `docs/05-MVP-TASKS.md`, and do not open pull requests for tasks nobody asked for. Work only on the issue the person points you at, keep one pull request per issue, and add new decisions to `docs/06-DECISIONS.md` only as **Proposed**. Read `CONTRIBUTING.md` first.
+
 ## What this is
 
 COAL is a local-first service that stores Intent Manifests (see `docs/04-INTENT-MANIFEST.md`) and exposes them to AI tools over MCP, a CLI, and a local web UI. Read `docs/02-SPEC.md` and `docs/03-ARCHITECTURE.md` before writing code. Work through `docs/05-MVP-TASKS.md` in order. Each task has acceptance criteria; do not mark a task done until they pass.
@@ -45,6 +49,8 @@ COAL is a local-first service that stores Intent Manifests (see `docs/04-INTENT-
 `coal reindex` must rebuild `index.db` from `manifests/` alone. If that stops being true, something is wrong.
 
 ## Commands
+
+These work once T01 (the monorepo scaffold) has landed. Until then there is no code on `main` to build or test. The Go proof of concept on `poc/go` has its own Makefile and is not part of this plan.
 
 ```
 pnpm install

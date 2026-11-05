@@ -163,7 +163,7 @@ Storage is file-first. The ER diagram describes the shape, not a relational sche
 | JSON manifests, one per file | Human-readable, git-able, trivially portable, diffable. |
 | SQLite FTS5 | Zero-dependency full-text search, fast enough for years of use on one machine. |
 | MCP as the primary interface | It is the one protocol every AI tool is adopting. Building to it means COAL works with tools that do not exist yet. |
-| Claude Code hooks for first capture | It is the only mainstream tool today that gives deterministic lifecycle hooks. Proves capture without browser hacks. |
+| Claude Code hooks for first capture | Deterministic lifecycle hooks, no browser hacks. Cursor, Codex CLI and Gemini CLI have hooks too; one adapter is enough to test the record, and the capture contract in ADR-011 keeps the next ones cheap. |
 | TypeScript | MCP SDK, Claude Code hook ecosystem, and the web UI all live there. One language, one toolchain. |
 
 ## Phase map

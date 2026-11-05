@@ -6,6 +6,11 @@
 <p align="center"><b>Cognitive Orchestration AI Layer</b></p>
 <p align="center">A record of your work that you own and any AI tool can read.</p>
 <p align="center"><a href="https://coalmine.io">coalmine.io</a></p>
+<p align="center">
+  <a href="https://github.com/calebtonn/coal/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/calebtonn/coal?style=flat&color=1d6b65"></a>
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-1b2333"></a>
+  <img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-e8a63c">
+</p>
 
 I use Claude, ChatGPT, Cursor and Claude Code in the same week. Each one produces things: an HTML page, a script, a plan, a decision. Each one forgets what I was doing when the session ends. Last week I spent twenty minutes scrolling through chats looking for a budget tracker I had built, because the only way to find it was to remember which conversation it was in.
 
@@ -19,13 +24,14 @@ It runs on your machine. The record is a folder of JSON files you can read with 
 
 ## Status
 
-Nothing is built yet. This repo is the spec and the task list. If you want to follow along or help, start with `CLAUDE.md` and `docs/05-MVP-TASKS.md`.
+Pre-alpha, and being built in the open. `main` holds the spec, the decisions behind it, and the task list (`docs/05-MVP-TASKS.md`). A proof of concept on the [`poc/go`](https://github.com/calebtonn/coal/blob/poc/go/docs/poc/STATUS.md) branch, written in Go, runs the demo from a recorded Claude Code session: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and the web UI. It has not been run against a live session, it has no `coal resume` yet, and it does not build from a fresh clone. It is not merged. If you want to follow along or help, read the spec, look through the proof of concept, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
 
 ## Layout
 
 ```
 coal/
   CLAUDE.md                     Instructions for Claude Code
+  CONTRIBUTING.md               How to help now
   assets/                       Icon: icon.png plus 16 to 512 px sizes
   docs/
     01-THESIS.md                Why this exists, one page
@@ -46,7 +52,7 @@ Two packages. `diamond` is the library. `coal` is what you install. I will split
 
 ## What the MVP covers
 
-Capture comes from Claude Code only, because it is the one mainstream tool with lifecycle hooks today. The case that started this (a page buried in a claude.ai chat) is handled in the MVP by running `coal add` on a downloaded file. Browser capture comes in Phase 2. The MVP shows that the record and the resume work with one harness. It does not yet show that capture works everywhere.
+Capture comes from Claude Code only. Cursor, Codex CLI and Gemini CLI have lifecycle hooks too, but one adapter is enough to test whether the record is worth keeping (ADR-011). The case that started this (a page buried in a claude.ai chat) is handled in the MVP by running `coal add` on a downloaded file. Browser capture comes in Phase 2. The MVP shows that the record and the resume work with one harness. It does not yet show that capture works everywhere.
 
 ## Phases
 
@@ -109,4 +115,4 @@ Done when: a manifest written by software this repo did not produce validates an
 
 ## License
 
-Apache 2.0. See `LICENSE`. All of it is open source: the schema, the library, the CLI, every adapter, and the policy engine when it exists. No paid tier.
+Apache 2.0. See [LICENSE](LICENSE). All of it is open source: the schema, the library, the CLI, every adapter, and the policy engine when it exists. No paid tier.
