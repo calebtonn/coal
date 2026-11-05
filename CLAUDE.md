@@ -25,7 +25,7 @@ COAL is a local-first service that stores Intent Manifests (see `docs/04-INTENT-
 - All IDs are UUIDv7 (time-ordered).
 - Timestamps are ISO 8601 UTC strings.
 - Artifact content is content-addressed with SHA-256 and copied into `~/.coal/artifacts/<hash>` on registration. Manifests reference artifacts by hash and by original URI.
-- Never delete user data. "Remove" means move to `~/.coal/trash/`.
+- Never delete user data. "Remove" means move to `~/.coal/trash/`. The one exception is `coal purge <hash>`, which removes an artifact body that holds a secret, after confirmation (#7).
 - The daemon binds to `127.0.0.1` only. Never `0.0.0.0`.
 - No telemetry. No network calls except those the user explicitly configures.
 - Prose in docs and UI copy: plain, direct, no em-dashes.
