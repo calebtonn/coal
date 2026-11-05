@@ -170,3 +170,37 @@ func TestNowEndsInZ(t *testing.T) {
 		t.Fatalf("bad timestamp %q", n)
 	}
 }
+
+func TestArtifactAgentTraceExtRoundTrips(t *testing.T) {
+	ref := map[string]any{"uri": "https://example.com/traces/42.json", "hash": "sha256:" + strings.Repeat("ab", 32)}
+	b := mutate(t, func(m map[string]any) {
+		m["artifacts"].([]any)[0].(map[string]any)["ext"] = map[string]any{"dev.agent-trace": ref}
+	})
+	m, err := Parse(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, ok := m.Artifacts[0].Ext["dev.agent-trace"]
+	if !ok {
+		t.Fatal("ext not decoded onto the artifact")
+	}
+	out, err := m.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := Parse(out)
+	if err != nil {
+		t.Fatalf("rewritten manifest invalid: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(again.Artifacts[0].Ext["dev.agent-trace"], &got); err != nil || got["uri"] != ref["uri"] || got["hash"] != ref["hash"] {
+		t.Fatalf("round trip gave %s (%v), first read %s", again.Artifacts[0].Ext["dev.agent-trace"], err, raw)
+	}
+
+	bad := mutate(t, func(m map[string]any) {
+		m["artifacts"].([]any)[0].(map[string]any)["ext"] = map[string]any{"dev.agent-trace": "not an object"}
+	})
+	if err := Validate(bad); err == nil || !strings.Contains(err.Error(), "/artifacts/0/ext") {
+		t.Fatalf("want an /artifacts/0/ext error, got %v", err)
+	}
+}

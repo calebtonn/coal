@@ -61,8 +61,11 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 | `producer` | Provenance | yes | Which tool produced the latest version (may differ from manifest provenance) |
 | `versions` | ArtifactVersion[] | no | Every recorded body, oldest first. At least one entry when present. The last entry matches the top-level `hash`, `size`, `createdAt` and `producer`. |
 | `skipped` | string | no | Why the latest body was not copied, for example a possible secret |
+| `ext` | object | no | Namespaced extensions for this artifact, e.g. `ext["dev.agent-trace"]` |
 
 Simple readers can ignore `versions` and use the top-level fields, which always describe the latest version.
+
+When an [Agent Trace](https://agent-trace.dev/) record exists for a code artifact, the artifact references it under `ext["dev.agent-trace"]` as `{"uri": "...", "hash": "sha256:..."}`. Either field may be left out. COAL does not add line-level attribution itself: Agent Trace records which lines came from which conversation, and COAL records the intent and state around them (ADR-015).
 
 ### ArtifactVersion
 

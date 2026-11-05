@@ -79,6 +79,9 @@ type Artifact struct {
 	Producer  Provenance        `json:"producer"`
 	Versions  []ArtifactVersion `json:"versions,omitempty"`
 	Skipped   string            `json:"skipped,omitempty"`
+	// Ext holds namespaced extensions, such as an Agent Trace reference
+	// under "dev.agent-trace" (ADR-015).
+	Ext map[string]json.RawMessage `json:"ext,omitempty"`
 }
 
 // ArtifactVersion is one recorded body of an artifact.

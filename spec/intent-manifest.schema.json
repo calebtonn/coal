@@ -262,6 +262,13 @@
         "skipped": {
           "type": "string",
           "description": "Why the body was not copied, for example a possible secret."
+        },
+        "ext": {
+          "type": "object",
+          "description": "Namespaced extensions keyed by reverse-DNS identifier, for example dev.agent-trace (ADR-015).",
+          "additionalProperties": {
+            "type": "object"
+          }
         }
       }
     },
