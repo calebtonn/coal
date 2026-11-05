@@ -1,14 +1,15 @@
 # Contributing to COAL
 
-Thanks for looking. Nothing in COAL runs yet, so the useful help right now is mostly about the spec, not code.
+Thanks for looking. COAL is being built in the open, and this page is about the kind of help that is useful right now.
 
 ## Where the project is
 
-COAL is pre-alpha. The repo holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). The MVP is built in that order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, the project continues to Phase 2, changes direction, or stops. The bar is in the README: if COAL does not get used unprompted at least five times that week, the project stops. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
+COAL is pre-alpha. `main` holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). A proof of concept on the `poc/go` branch already runs the full end-to-end demo. It is not merged, and it is not packaged for others to run yet. The MVP is built in the plan's order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, the project continues to Phase 2, changes direction, or stops. The bar is in the README: if COAL does not get used unprompted at least five times that week, the project stops. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
 
 ## What helps now
 
 - Read `docs/02-SPEC.md`, `docs/04-INTENT-MANIFEST.md` and `docs/06-DECISIONS.md`, and open an issue for anything that is wrong, unclear, or contradicts another doc. Say where (file and section), what the problem is, and what you would change. Issues #1 to #9 are good examples.
+- Look through the proof of concept on `poc/go` and open an issue where it disagrees with the spec, or where the code does something the docs do not say.
 - If you think the design should change, open a pull request that adds an ADR to `docs/06-DECISIONS.md` with status Proposed. Say what problem it solves and what you considered instead. PR #10 is an example.
 - If you would write manifests from another tool, say so in an issue before you build anything. A second writer is what the format needs most.
 
