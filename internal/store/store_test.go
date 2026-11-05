@@ -85,11 +85,17 @@ func TestParallelRegister(t *testing.T) {
 
 func TestSameURIVersions(t *testing.T) {
 	s, m := setup(t)
-	p := filepath.Join(t.TempDir(), "budget.html")
+	p := filepath.Join(t.TempDir(), "budget tracker.html")
+	escaped := "file://" + strings.ReplaceAll(p, " ", "%20")
 	var last *manifest.Artifact
-	for _, body := range []string{"<h1>v1</h1>", "<h1>v2</h1>", "<h1>v2</h1>"} {
+	// The second write names the same file through another spelling of its uri.
+	for i, body := range []string{"<h1>v1</h1>", "<h1>v2</h1>", "<h1>v2</h1>"} {
 		must(t, os.WriteFile(p, []byte(body), 0o600))
-		a, err := s.RegisterArtifact(m.ID, ArtifactInput{Path: p}, Op{})
+		in := ArtifactInput{Path: p}
+		if i == 1 {
+			in.URI = "FILE://" + p + "/" // upper-case scheme, raw space, trailing slash
+		}
+		a, err := s.RegisterArtifact(m.ID, in, Op{})
 		must(t, err)
 		last = a
 	}
@@ -101,7 +107,7 @@ func TestSameURIVersions(t *testing.T) {
 	if len(a.Versions) != 2 || a.Hash != a.Versions[1].Hash || a.Hash != last.Hash {
 		t.Fatalf("versions wrong: %+v", a)
 	}
-	if a.Type != "html" || !strings.HasPrefix(a.MIME, "text/html") || a.Title != "budget.html" || a.URI != "file://"+p {
+	if a.Type != "html" || !strings.HasPrefix(a.MIME, "text/html") || a.Title != "budget tracker.html" || a.URI != escaped {
 		t.Fatalf("defaults wrong: %+v", a)
 	}
 	if body, err := s.ReadArtifact(a.Hash); err != nil || string(body) != "<h1>v2</h1>" {
@@ -208,5 +214,22 @@ func TestIDMustMatchFileName(t *testing.T) {
 	ms, errs := s.List()
 	if len(ms) != 1 || ms[0].ID != m.ID || len(errs) != 1 || !strings.Contains(errs[0].Error(), other) {
 		t.Fatalf("List: %d manifests, errs %v", len(ms), errs)
+	}
+}
+
+func TestCanonicalURI(t *testing.T) {
+	for in, want := range map[string]string{
+		"file:///tmp/a%20b.html":        "file:///tmp/a%20b.html",
+		"FILE:///tmp/a b.html":          "file:///tmp/a%20b.html",
+		"file:///tmp/a%2Db.html":        "file:///tmp/a-b.html",
+		"https://Example.COM/Docs/":     "https://example.com/Docs",
+		"https://example.com/":          "https://example.com/",
+		"https://example.com/p?q=1#top": "https://example.com/p?q=1#top",
+		" file:///x ":                   "file:///x",
+		"":                              "",
+	} {
+		if got := CanonicalURI(in); got != want {
+			t.Errorf("CanonicalURI(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

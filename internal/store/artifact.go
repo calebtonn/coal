@@ -64,6 +64,7 @@ func (s *Store) RegisterArtifact(manifestID string, in ArtifactInput, op Op) (*m
 			in.Title = filepath.Base(abs)
 		}
 	}
+	in.URI = CanonicalURI(in.URI)
 	if u, err := url.Parse(in.URI); err == nil && in.Title == "" && strings.Trim(u.Path, "/") != "" {
 		in.Title = path.Base(u.Path)
 	}
@@ -91,7 +92,7 @@ func (s *Store) RegisterArtifact(manifestID string, in ArtifactInput, op Op) (*m
 	_, err := s.Update(manifestID, 0, func(m *manifest.Manifest) error {
 		for i := range m.Artifacts {
 			a := &m.Artifacts[i]
-			if in.URI != "" && a.URI == in.URI {
+			if in.URI != "" && CanonicalURI(a.URI) == in.URI {
 				if a.Hash == v.Hash {
 					out = *a
 					return ErrNoChange
@@ -121,6 +122,25 @@ func (s *Store) RegisterArtifact(manifestID string, in ArtifactInput, op Op) (*m
 		return nil, err
 	}
 	return &out, nil
+}
+
+// CanonicalURI is the form artifact URIs are stored and compared in, so
+// one file reached through two spellings is one artifact: scheme and host
+// lowercased, the path decoded and re-encoded one way, and a trailing
+// slash dropped. Use it for every lookup by uri. A string that does not
+// parse as a URL is returned trimmed.
+func CanonicalURI(raw string) string {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || raw == "" {
+		return raw
+	}
+	u.Scheme, u.Host = strings.ToLower(u.Scheme), strings.ToLower(u.Host)
+	u.RawPath = "" // re-encode from the decoded Path
+	if len(u.Path) > 1 {
+		u.Path = strings.TrimSuffix(u.Path, "/")
+	}
+	return u.String()
 }
 
 func guessMIME(ext string, body []byte) string {
