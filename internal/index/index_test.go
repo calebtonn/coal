@@ -365,6 +365,13 @@ func TestStaleUpsertIgnored(t *testing.T) {
 	if rs := search(t, ix, "", SearchOpts{}); rs[0].NextStep != "same rev rewrite" {
 		t.Errorf("equal rev should replace: %+v", rs[0])
 	}
+	// A hand-restored or reverted file: lower rev, newer updatedAt. It wins.
+	restored := *m
+	restored.Rev, restored.UpdatedAt, restored.State.NextStep = 1, "2026-11-02T00:00:00Z", "restored step"
+	must(t, ix.Upsert(&restored))
+	if rs := search(t, ix, "", SearchOpts{}); rs[0].NextStep != "restored step" {
+		t.Errorf("restored file ignored: %+v", rs[0])
+	}
 }
 
 func TestTimestampsNormalised(t *testing.T) {

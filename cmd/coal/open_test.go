@@ -99,8 +99,8 @@ func TestViewCopyName(t *testing.T) {
 		}
 	}
 	// Whatever the system MIME table says, a runnable extension never comes out.
-	for _, title := range []string{"launch.desktop", "install.sh", "x.exe", "a.jar"} {
-		for _, mt := range []string{"application/x-desktop", "application/x-sh", "text/x-sh", "application/x-msdownload", "application/java-archive", "text/plain"} {
+	for _, title := range []string{"launch.desktop", "install.sh", "x.exe", "a.jar", "app.js", "a.vbs", "b.hta", "c.lnk", "d.url", "e.reg", "f.ps1", "g.msi"} {
+		for _, mt := range []string{"application/x-desktop", "application/x-sh", "text/x-sh", "application/x-msdownload", "application/java-archive", "text/javascript", "text/plain"} {
 			got, err := viewCopy(home, body, title, mt)
 			if err != nil || runnable[strings.ToLower(filepath.Ext(got))] {
 				t.Errorf("viewCopy(%q, %q) = %q, %v", title, mt, got, err)

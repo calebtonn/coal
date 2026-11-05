@@ -140,7 +140,7 @@ func (s *Store) commit(msg string) {
 	}
 	defer unlock()
 	if _, err = s.git("add", "-A", "manifests"); err == nil {
-		if _, err = s.git("diff", "--cached", "--quiet"); err == nil {
+		if _, err = s.git("diff", "--cached", "--quiet", "--no-ext-diff"); err == nil {
 			return
 		}
 		_, err = s.git("commit", "-q", "--no-verify", "-m", msg)

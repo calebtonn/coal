@@ -107,6 +107,8 @@ var runnable = map[string]bool{
 	".desktop": true, ".sh": true, ".bash": true, ".zsh": true, ".command": true, ".tool": true, ".app": true,
 	".exe": true, ".bat": true, ".cmd": true, ".com": true, ".ps1": true, ".msi": true, ".scr": true,
 	".jar": true, ".appimage": true, ".run": true, ".deb": true, ".rpm": true, ".pkg": true, ".dmg": true,
+	".js": true, ".jse": true, ".vbs": true, ".vbe": true, ".wsf": true, ".wsh": true, ".hta": true,
+	".reg": true, ".lnk": true, ".url": true,
 }
 
 // extFor picks a file extension for a MIME type, preferring the common

@@ -143,7 +143,8 @@ func (ix *Index) IDs() ([]string, error) {
 }
 
 // Upsert adds or replaces one manifest. It does nothing when the index
-// already holds a newer rev, so a slow writer cannot replace a newer row.
+// already holds a higher rev that is not older by updatedAt, so a slow
+// writer cannot replace a newer row.
 func (ix *Index) Upsert(m *manifest.Manifest) error {
 	tx, err := ix.db.Begin()
 	if err != nil {
@@ -196,9 +197,13 @@ func remove(tx *sql.Tx, id string) error {
 }
 
 func upsert(tx *sql.Tx, m *manifest.Manifest) error {
+	// Ignore only an older write: a lower rev that is also not newer by
+	// updatedAt. A git revert or a hand-restored file can carry a lower rev
+	// with a newer updatedAt, and must replace the row.
 	var rev int
-	err := tx.QueryRow(`SELECT coalesce(rev, 0) FROM docs WHERE id = ?`, m.ID).Scan(&rev)
-	if err == nil && rev > m.Rev {
+	var updated string
+	err := tx.QueryRow(`SELECT coalesce(rev, 0), coalesce(updated_at, '') FROM docs WHERE id = ?`, m.ID).Scan(&rev, &updated)
+	if err == nil && rev > m.Rev && updated >= utcSeconds(m.UpdatedAt) {
 		return nil
 	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
