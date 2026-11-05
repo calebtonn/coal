@@ -43,6 +43,16 @@ func truncate(s string, n int) string {
 	return string(r[:n])
 }
 
+// headTail keeps the first and last n/2 characters of s, joined by a
+// marked gap, so the end of a long message survives the cap.
+func headTail(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n/2]) + "\n…\n" + string(r[len(r)-n/2:])
+}
+
 // trimWords cuts s to at most n characters, on a word boundary when one
 // exists in the kept part.
 func trimWords(s string, n int) string {

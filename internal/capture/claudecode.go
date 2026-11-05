@@ -74,7 +74,7 @@ func FromClaudeCode(hookEvent string, payload []byte) (*Event, error) {
 		e.Kind = KindFileWritten
 	case "Stop":
 		e.Kind = KindTurnEnd
-		e.LastAssistantMessage = truncate(p.LastAssistantMessage, MaxText)
+		e.LastAssistantMessage = headTail(p.LastAssistantMessage, MaxText)
 	case "SessionEnd":
 		e.Kind, e.Reason = KindSessionEnd, p.Reason
 	default:

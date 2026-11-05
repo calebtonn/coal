@@ -72,6 +72,13 @@ func TestFromClaudeCodeSkips(t *testing.T) {
 	if _, err := FromClaudeCode("Stop", []byte(`{}`)); err == nil {
 		t.Error("no session_id: no error")
 	}
+	msg := strings.Repeat("a", 9000) + "\nNext step: ship it"
+	b, _ := json.Marshal(map[string]string{"session_id": "s", "last_assistant_message": msg})
+	e, _ = FromClaudeCode("Stop", b)
+	if _, next := ExtractState(e.LastAssistantMessage); next != "ship it" || !strings.Contains(e.LastAssistantMessage, "\n…\n") ||
+		len([]rune(e.LastAssistantMessage)) != MaxText+3 {
+		t.Errorf("head and tail: next %q, %d runes", next, len([]rune(e.LastAssistantMessage)))
+	}
 	long := strings.Repeat("é", MaxText+50)
 	e, _ = FromClaudeCode("UserPromptSubmit", []byte(`{"session_id":"s","prompt":"`+long+`"}`))
 	if len([]rune(e.Prompt)) != MaxText {
@@ -95,6 +102,8 @@ func TestPickSummary(t *testing.T) {
 	reject := []string{
 		"", "/review the open pull request now", "continue", "Yes!", "go on.", "OK", "Keep going",
 		"do it", "yes please go ahead and continue", "fix the bug", "Next.",
+		"<cross-session-message from=\"x\">please build the budget page now</cross-session-message>",
+		"  <task-notification>the build finished with three warnings</task-notification>",
 		"Hi there\n<pasted_content id=\"2\">\nlots of pasted words here\n</pasted_content id=\"2\">",
 		"TypeError: x is not a function\n    at foo (a.js:1:2)\n    at bar (a.js:3:4)\nwhat is this",
 		"func main() {\n\tfmt.Println(1)\n}\nwhy no output here",

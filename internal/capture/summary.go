@@ -33,14 +33,17 @@ func init() {
 	}
 }
 
-// PickSummary applies the summary filter (#11) to a user prompt. It
-// rejects slash commands, prompts under four words, stop-list replies
+// PickSummary applies the summary filter (#11) to a user prompt. After
+// pasted blocks are removed it rejects slash commands, text starting
+// with a "<" wrapper tag, prompts under four words, stop-list replies
 // and text that is mostly code or a stack trace. On accept it returns
 // the first plain line, whitespace collapsed, cut to 200 characters on a
 // word boundary.
 func PickSummary(prompt string) (string, bool) {
 	text := strings.TrimSpace(pastedBlock.ReplaceAllString(prompt, ""))
-	if text == "" || strings.HasPrefix(text, "/") {
+	// "/" is a slash command; "<" is a wrapper tag such as a
+	// cross-session message or a task notification, not the user's words.
+	if text == "" || strings.HasPrefix(text, "/") || strings.HasPrefix(text, "<") {
 		return "", false
 	}
 	if isStopPhrase(text) {
