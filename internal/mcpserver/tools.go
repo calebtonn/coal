@@ -26,6 +26,8 @@ const (
 	capturedBy    = "coal-mcp@" + Version
 )
 
+var artifactTypes = []string{"html", "code", "doc", "data", "image", "other"}
+
 var statuses = []string{manifest.StatusActive, manifest.StatusPaused, manifest.StatusDone, manifest.StatusAbandoned}
 
 func (s *server) addTools(srv *mcp.Server) {
@@ -292,7 +294,7 @@ type RegisterInput struct {
 	Path       string  `json:"path,omitempty" jsonschema:"absolute path to a regular file; set path or content"`
 	Content    *string `json:"content,omitempty" jsonschema:"inline text content; set path or content"`
 	Title      string  `json:"title,omitempty" jsonschema:"display title; defaults to the file name"`
-	Type       string  `json:"type,omitempty" jsonschema:"html, code, document, image, data or other; guessed when empty"`
+	Type       string  `json:"type,omitempty" jsonschema:"html, code, doc, data, image or other; guessed when empty"`
 	MIME       string  `json:"mime,omitempty" jsonschema:"MIME type; guessed when empty"`
 	URI        string  `json:"uri,omitempty" jsonschema:"stable identity for inline content; registering the same uri again adds a version"`
 }
@@ -312,6 +314,9 @@ func (s *server) registerArtifact(_ context.Context, req *mcp.CallToolRequest, i
 	}
 	if (in.Path == "") == (in.Content == nil) {
 		return fail(errors.New("set exactly one of path or content"))
+	}
+	if in.Type != "" && !slices.Contains(artifactTypes, in.Type) {
+		return fail(fmt.Errorf("type %q is not allowed; use one of %s, or leave it empty to guess", in.Type, strings.Join(artifactTypes, ", ")))
 	}
 	id, err := s.app.Resolve(in.ManifestID)
 	if err != nil {
@@ -360,6 +365,15 @@ type UpdateInput struct {
 	Rev           *int     `json:"rev,omitempty" jsonschema:"the rev you read with coal_get; the update fails if the manifest changed since"`
 }
 
+// stampTool names the writer in the state stamp: the client name, or
+// coal-mcp when the client sent none.
+func stampTool(req *mcp.CallToolRequest) string {
+	if n := clientName(req); n != "mcp" {
+		return n
+	}
+	return "coal-mcp"
+}
+
 func (s *server) updateState(_ context.Context, req *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, any, error) {
 	fail := func(err error) (*mcp.CallToolResult, any, error) { return nil, nil, s.fail("coal_update_state", err) }
 	if in.Status != "" && !slices.Contains(statuses, in.Status) {
@@ -393,6 +407,9 @@ func (s *server) updateState(_ context.Context, req *mcp.CallToolRequest, in Upd
 		}
 		if in.Status != "" {
 			m.Status = in.Status
+		}
+		if in.NextStep != nil || in.OpenQuestions != nil || in.Summary != nil {
+			manifest.StampState(m, stampTool(req))
 		}
 		m.State.LastActivityAt = manifest.Now()
 		return nil

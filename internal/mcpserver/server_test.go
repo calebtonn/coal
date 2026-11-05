@@ -179,6 +179,14 @@ func TestReadArtifactVersions(t *testing.T) {
 	if res := f.call("coal_read_artifact", map[string]any{"id": f.id, "version": 5}, nil); !res.IsError {
 		t.Error("out-of-range version should be a tool error")
 	}
+	res = f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "content": "x", "type": "document"}, nil)
+	if !res.IsError || !strings.Contains(resText(res), "html, code, doc, data, image, other") {
+		t.Errorf("bad type: %v %s", res.IsError, resText(res))
+	}
+	f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "content": "notes", "uri": "coal:test/notes", "type": "doc"}, &reg)
+	if reg.Artifact.Type != "doc" {
+		t.Errorf("doc type: %+v", reg.Artifact)
+	}
 	if res := f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "path": "relative.txt"}, nil); !res.IsError {
 		t.Error("relative path should be a tool error")
 	}
@@ -206,9 +214,23 @@ func TestUpdateStateRev(t *testing.T) {
 	if len(out.Results) != 1 || out.Results[0].NextStep != "Add CSV export" {
 		t.Errorf("find after update: %+v", out)
 	}
+	if st, ok := manifest.StateStampOf(&got); !ok || st.RecordedBy != "test-client" {
+		t.Errorf("state stamp %+v %v", st, ok)
+	}
+	// A status-only change is not a recorded state: no new stamp.
+	var rec RecordOutput
+	f.call("coal_record_intent", map[string]any{"summary": "a second piece of work"}, &rec)
+	f.call("coal_update_state", map[string]any{"id": rec.ID, "status": "paused"}, &got)
+	if st, ok := manifest.StateStampOf(&got); ok || got.Status != "paused" {
+		t.Errorf("status-only update stamped: %+v", st)
+	}
+	// The SDK rejects the unknown property before the handler runs.
 	res = f.call("coal_update_state", map[string]any{"id": f.id, "intent": map[string]any{"summary": "hijack"}}, nil)
+	if !res.IsError || !strings.Contains(resText(res), "unexpected additional properties") {
+		t.Errorf("intent argument: %v %s", res.IsError, resText(res))
+	}
 	if after, _ := f.app.Get(f.id); after.Intent.Summary != m.Intent.Summary {
-		t.Errorf("intent.summary changed: %q (%s)", after.Intent.Summary, resText(res))
+		t.Errorf("intent.summary changed: %q", after.Intent.Summary)
 	}
 }
 
