@@ -2,9 +2,14 @@
 # Pipe initialize, tools/list and a coal_find call into `coal mcp` over
 # stdio against the sandbox data dir, print the responses, and fail if
 # coal_find returns no result. Builds nothing; run `make build` first.
+#
+#   COAL_HOME  data dir, default .sandbox/coal; must be inside .sandbox/
+#              unless COAL_ALLOW_OUTSIDE_SANDBOX=1
 set -euo pipefail
-cd "$(dirname "$0")/.."
-export COAL_HOME="$PWD/.sandbox/coal"
+. "$(dirname "$0")/sandbox-guard.sh"
+cd "$repo"
+export COAL_HOME="${COAL_HOME:-$sandbox/coal}"
+in_sandbox_or_die COAL_HOME "$COAL_HOME"
 bin=.sandbox/bin/coal
 [ -x "$bin" ] || { echo "missing $bin; run make build" >&2; exit 1; }
 

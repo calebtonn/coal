@@ -1,20 +1,35 @@
 #!/usr/bin/env bash
-# Replay the recorded Claude Code session through `coal hook`, all inside
-# .sandbox/. Then search for it and start a second session that prints
-# the resume JSON. Nothing outside the repo's .sandbox/ is touched.
+# Replay the recorded Claude Code session through `coal hook`. Then
+# search for it and start a second session that prints the resume JSON.
+#
+#   COAL_HOME  data dir, default .sandbox/coal
+#   PROJECT    project dir, default .sandbox/projects/budget; recreated
+#              on each run when it is inside .sandbox/
+#   RESUME=0   stop after the first session (no find, no second start)
+#
+# Both paths must be inside .sandbox/ unless COAL_ALLOW_OUTSIDE_SANDBOX=1.
+# Hook timings go to stderr.
 set -euo pipefail
+. "$(dirname "$0")/sandbox-guard.sh"
 
-repo=$(cd "$(dirname "$0")/.." && pwd)
-sandbox="$repo/.sandbox"
 coal="$sandbox/bin/coal"
-project="$sandbox/projects/budget"
 payloads="$repo/testdata/claude-code"
-export COAL_HOME="$sandbox/coal"
+export COAL_HOME="${COAL_HOME:-$sandbox/coal}"
+project="${PROJECT:-$sandbox/projects/budget}"
+in_sandbox_or_die COAL_HOME "$COAL_HOME"
+in_sandbox_or_die PROJECT "$project"
+project=$(realpath -m -- "$project")
 
 [ -x "$coal" ] || { echo "build first: make build" >&2; exit 1; }
 
-# A fresh project for each run. Removal stays inside .sandbox/.
-case "$project" in "$sandbox"/*) rm -rf "$project" ;; *) exit 1 ;; esac
+# A fresh project for each run. Deletion only ever happens inside
+# .sandbox/; outside it, the directory must be new or empty.
+if inside_sandbox "$project"; then
+	rm -rf -- "$project"
+elif [ -n "$(ls -A -- "$project" 2>/dev/null)" ]; then
+	echo "refusing to reuse $project: it is outside .sandbox/ and not empty" >&2
+	exit 2
+fi
 mkdir -p "$project"
 git -C "$project" init -q
 cat > "$project/budget.html" <<'HTML'
@@ -35,16 +50,18 @@ send() { # send <hook> <payload file>
 	start=$(date +%s%N)
 	sed "s#/PROJECT/budget#$project#g" "$payloads/$2" | "$coal" hook "$1"
 	end=$(date +%s%N)
-	printf '%-20s %4d ms\n' "$1" $(((end - start) / 1000000)) >&2
+	printf 'hook %-20s %4d ms\n' "$1" $(((end - start) / 1000000)) >&2
 }
 
-echo "== replaying session 1" >&2
+echo "== replaying session 1 in $project" >&2
 send session-start session-start.json
 send user-prompt-submit user-prompt-submit.json
 send post-tool-use post-tool-use-write.json
 send post-tool-use post-tool-use-edit.json
 send stop stop.json
 send session-end session-end.json
+
+[ "${RESUME:-1}" = 0 ] && exit 0
 
 echo "== coal find budget" >&2
 "$coal" find budget

@@ -6,7 +6,7 @@ BIN := $(SANDBOX)/bin/coal
 # Go walks into web/node_modules, which can hold stray Go packages.
 PKGS = $(shell $(GO) list ./... | grep -v /node_modules/)
 
-.PHONY: build test vet fmt web dev e2e demo-init
+.PHONY: build test vet fmt web dev e2e demo demo-init
 
 build:
 	$(GO) build -o $(BIN) ./cmd/coal
@@ -31,6 +31,10 @@ dev:
 e2e:
 	$(MAKE) web build
 	cd web && bun run e2e
+
+# The five definition-of-done steps in a fresh .sandbox/demo-*/ dir.
+demo:
+	scripts/demo.sh
 
 demo-init: build
 	COAL_HOME=$(SANDBOX)/coal $(BIN) init
