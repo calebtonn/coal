@@ -29,7 +29,7 @@ type Result struct {
 	NextStep       string   `json:"nextStep"`
 	Snippet        string   `json:"snippet"` // HTML-escaped; <b> is the only markup
 	Matched        []string `json:"matched"`
-	Rank           float64  `json:"rank"` // bm25, lower is better; 0 when listing
+	Rank           float64  `json:"-"` // bm25, lower is better; 0 when listing
 }
 
 // columns are the FTS columns after id, with the names Matched reports.

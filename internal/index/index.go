@@ -91,6 +91,24 @@ func (ix *Index) Count() (int, error) {
 	return n, err
 }
 
+// IDs returns every indexed manifest id in sorted order.
+func (ix *Index) IDs() ([]string, error) {
+	rows, err := ix.db.Query(`SELECT id FROM docs ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // Upsert adds or replaces one manifest.
 func (ix *Index) Upsert(m *manifest.Manifest) error {
 	tx, err := ix.db.Begin()
