@@ -80,7 +80,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Decision.** coalmine.io is the standard: the published schema (`/schema/intent-manifest/<version>.json`), the spec, the docs and the project site. coalmine.app is reserved for anything that runs: the hosted MCP endpoint, sync, or an API, if and when any of those exist. Package names, the CLI and the data directory stay `coal`.
 
-**Consequences.** The schema `$id` is `https://coalmine.io/schema/intent-manifest/0.1.json` and must be served at that path once the site is up (Phase 1 task). In Phase 1 nothing runs on coalmine.app; it redirects to coalmine.io. Registering the domain is not a reason to host anything before the Phase 1 retro.
+**Consequences.** The schema `$id` is `https://coalmine.io/schema/intent-manifest/0.1.json` and must be served at that path once the site is up (Phase 1 task). In Phase 1 nothing runs on coalmine.app; it redirects to coalmine.io. The one-page project site at coalmine.io is built from `site/` and deployed by `.github/workflows/pages.yml`, together with the schema at its `$id`. Nothing else is hosted before the Phase 1 retro.
 
 ## ADR-011: One capture contract, adapters for every coding agent with hooks
 
