@@ -344,3 +344,58 @@ func TestSearchTenThousand(t *testing.T) {
 		}
 	}
 }
+
+func TestStaleUpsertIgnored(t *testing.T) {
+	ix, _ := open(t)
+	m := mk("budget tracker", "user", "2026-11-01T00:00:00Z")
+	m.Rev = 3
+	m.State.NextStep = "newer step"
+	must(t, ix.Upsert(m))
+	old := *m
+	old.Rev, old.State.NextStep = 2, "older step"
+	must(t, ix.Upsert(&old))
+	if rs := search(t, ix, "", SearchOpts{}); len(rs) != 1 || rs[0].NextStep != "newer step" {
+		t.Fatalf("stale upsert won: %+v", rs)
+	}
+	m.Rev, m.State.NextStep = 3, "same rev rewrite"
+	must(t, ix.Upsert(m))
+	if rs := search(t, ix, "", SearchOpts{}); rs[0].NextStep != "same rev rewrite" {
+		t.Errorf("equal rev should replace: %+v", rs[0])
+	}
+}
+
+func TestTimestampsNormalised(t *testing.T) {
+	ix, _ := open(t)
+	a := mk("budget a", "user", "2026-11-01T10:00:00.123456+02:00") // 08:00 UTC
+	b := mk("budget b", "user", "2026-11-01T09:00:00Z")
+	must(t, ix.Upsert(a))
+	must(t, ix.Upsert(b))
+	rs := search(t, ix, "", SearchOpts{})
+	if rs[0].ID != b.ID || rs[1].LastActivityAt != "2026-11-01T08:00:00Z" {
+		t.Errorf("order or format wrong: %+v", rs)
+	}
+}
+
+func TestCorruptFileSetAside(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.db")
+	must(t, os.WriteFile(path, []byte("this is not a database, just garbage bytes for the test"), 0o600))
+	_, err := Open(path)
+	if err == nil || !IsCorrupt(err) {
+		t.Fatalf("Open on garbage: %v (corrupt=%v)", err, IsCorrupt(err))
+	}
+	moved, err := SetAside(path)
+	if err != nil || len(moved) == 0 || !strings.Contains(filepath.Base(moved[0]), "index.db.broken.") {
+		t.Fatalf("SetAside: %v %v", moved, err)
+	}
+	for _, p := range moved {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s not kept: %v", p, err)
+		}
+	}
+	ix, err := Open(path)
+	must(t, err)
+	ix.Close()
+	if IsCorrupt(fmt.Errorf("database is locked")) {
+		t.Error("a plain error counted as corrupt")
+	}
+}

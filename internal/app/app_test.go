@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,5 +102,36 @@ func TestIndexErrorIsLoggedNotReturned(t *testing.T) {
 	log, _ := os.ReadFile(filepath.Join(home, "logs", "coal.log"))
 	if !strings.Contains(string(log), "index: upsert "+m.ID) {
 		t.Fatalf("log:\n%s", log)
+	}
+}
+
+func TestReindexDuringWritesStaysCurrent(t *testing.T) {
+	home := t.TempDir()
+	a, err := Open(home, store.WithHistory(false))
+	must(t, err)
+	defer a.Close()
+	m := manifest.New("budget tracker", manifest.SourceUser, manifest.Provenance{Tool: "test"})
+	must(t, a.Create(m, op))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 20 {
+			if _, _, err := a.Reindex(); err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+	for i := range 40 {
+		_, err := a.Update(m.ID, 0, func(m *manifest.Manifest) error {
+			m.State.NextStep = fmt.Sprintf("step %d", i)
+			return nil
+		}, op)
+		must(t, err)
+	}
+	<-done
+	got, _ := a.Get(m.ID)
+	rs := find(t, a, "")
+	if len(rs) != 1 || rs[0].NextStep != got.State.NextStep {
+		t.Fatalf("index has %+v, store has %q", rs, got.State.NextStep)
 	}
 }

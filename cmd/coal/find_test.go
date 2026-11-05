@@ -143,3 +143,27 @@ func TestRelTime(t *testing.T) {
 		}
 	}
 }
+
+func TestGarbageIndexRecovers(t *testing.T) {
+	home := t.TempDir()
+	os.MkdirAll(home, 0o700)
+	os.WriteFile(filepath.Join(home, "index.db"), []byte("garbage, not sqlite at all, long enough to have a header"), 0o600)
+	id := strings.TrimSpace(coal(t, home, "add", "--intent", "Household budget tracker"))
+	if out := coal(t, home, "find", "budget"); !strings.Contains(out, "Household budget tracker") {
+		t.Fatalf("find:\n%s", out)
+	}
+	if out := coal(t, home, "reindex"); !strings.Contains(out, "indexed 1 manifests") {
+		t.Fatalf("reindex:\n%s", out)
+	}
+	broken, _ := filepath.Glob(filepath.Join(home, "index.db.broken.*"))
+	if len(broken) != 1 {
+		t.Errorf("broken files %v", broken)
+	}
+	if b, _ := os.ReadFile(broken[0]); !strings.HasPrefix(string(b), "garbage") {
+		t.Errorf("broken file content %q", b)
+	}
+	if log, _ := os.ReadFile(filepath.Join(home, "logs", "coal.log")); !strings.Contains(string(log), "moved") {
+		t.Errorf("not logged:\n%s", log)
+	}
+	_ = id
+}

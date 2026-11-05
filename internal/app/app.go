@@ -5,7 +5,10 @@
 package app
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/calebtonn/coal/internal/index"
 	"github.com/calebtonn/coal/internal/manifest"
@@ -19,33 +22,81 @@ type App struct {
 }
 
 // Open opens the store at home and its index. An empty index is rebuilt
-// from manifests/, so a new or deleted index.db never hides manifests.
+// from manifests/, so a new or deleted index.db never hides manifests. A
+// corrupt index.db is renamed to index.db.broken.<ts> and replaced.
 func Open(home string, opts ...store.Option) (*App, error) {
 	s, err := store.Open(home, opts...)
 	if err != nil {
 		return nil, err
 	}
-	ix, err := index.Open(filepath.Join(s.Dir(), "index.db"))
+	path := filepath.Join(s.Dir(), "index.db")
+	ix, err := index.Open(path)
+	if err != nil && index.IsCorrupt(err) {
+		moved, merr := index.SetAside(path)
+		if merr != nil {
+			return nil, errors.Join(err, merr)
+		}
+		s.Log("index: %v; moved %v aside and starting a fresh index", err, moved)
+		ix, err = index.Open(path)
+	}
 	if err != nil {
 		return nil, err
 	}
 	a := &App{Store: s, Index: ix}
-	n, err := ix.Count()
-	if err == nil && n == 0 {
-		_, _, err = a.Reindex()
-	}
-	if err != nil {
+	if err := a.rebuildIfEmpty(); err != nil {
 		ix.Close()
 		return nil, err
 	}
 	return a, nil
 }
 
+// indexLock takes a flock on <home>/.index.lock: exclusive for a rebuild,
+// shared for a single upsert or delete. A rebuild lists manifests and then
+// replaces the whole index, so a write that lands between those two steps
+// would be lost; the shared lock makes such a write wait until the rebuild
+// is done, and then apply on top of it.
+func (a *App) indexLock(exclusive bool) (func(), error) {
+	f, err := os.OpenFile(filepath.Join(a.Store.Dir(), ".index.lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	how := syscall.LOCK_SH
+	if exclusive {
+		how = syscall.LOCK_EX
+	}
+	if err := syscall.Flock(int(f.Fd()), how); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return func() { f.Close() }, nil
+}
+
+func (a *App) rebuildIfEmpty() error {
+	if n, err := a.Index.Count(); err != nil || n > 0 {
+		return err
+	}
+	unlock, err := a.indexLock(true)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if n, err := a.Index.Count(); err != nil || n > 0 { // another process rebuilt it
+		return err
+	}
+	_, _, err = a.rebuild()
+	return err
+}
+
 // Close closes the index.
 func (a *App) Close() error { return a.Index.Close() }
 
 func (a *App) upsert(m *manifest.Manifest) {
-	if err := a.Index.Upsert(m); err != nil {
+	unlock, err := a.indexLock(false)
+	if err == nil {
+		err = a.Index.Upsert(m)
+		unlock()
+	}
+	if err != nil {
 		a.Store.Log("index: upsert %s failed: %v; run coal reindex", m.ID, err)
 	}
 }
@@ -90,7 +141,12 @@ func (a *App) Remove(id string, op store.Op) (string, error) {
 	if err != nil {
 		return dst, err
 	}
-	if err := a.Index.Delete(id); err != nil {
+	unlock, err := a.indexLock(false)
+	if err == nil {
+		err = a.Index.Delete(id)
+		unlock()
+	}
+	if err != nil {
 		a.Store.Log("index: delete %s failed: %v; run coal reindex", id, err)
 	}
 	return dst, nil
@@ -110,6 +166,16 @@ func (a *App) Resolve(prefix string) (string, error) { return a.Store.Resolve(pr
 // Reindex rebuilds the index from manifests/ alone. Files that do not
 // parse or validate are skipped and logged.
 func (a *App) Reindex() (indexed, skipped int, err error) {
+	unlock, err := a.indexLock(true)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer unlock()
+	return a.rebuild()
+}
+
+// rebuild lists and rebuilds; the caller holds the exclusive index lock.
+func (a *App) rebuild() (indexed, skipped int, err error) {
 	ms, errs := a.Store.List()
 	for _, e := range errs {
 		a.Store.Log("reindex: skipped: %v", e)

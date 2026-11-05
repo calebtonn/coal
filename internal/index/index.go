@@ -8,22 +8,24 @@ import (
 	"fmt"
 	"html"
 	"net/url"
+	"os"
 	"strings"
+	"time"
 
-	_ "modernc.org/sqlite" // registers the "sqlite" driver
+	"modernc.org/sqlite" // also registers the "sqlite" driver
 
 	"github.com/calebtonn/coal/internal/manifest"
 )
 
 // schemaVersion changes whenever the tables below change. A mismatch
 // drops and recreates everything, since the index is derived.
-const schemaVersion = "1"
+const schemaVersion = "2"
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS docs(
 	id TEXT PRIMARY KEY, summary TEXT, source TEXT, status TEXT,
-	last_activity_at TEXT, updated_at TEXT, artifact_count INTEGER, next_step TEXT);
+	last_activity_at TEXT, updated_at TEXT, artifact_count INTEGER, next_step TEXT, rev INTEGER);
 CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(
 	id UNINDEXED, summary, goal, tags, artifacts, next_step, state_summary,
 	tokenize='porter unicode61');
@@ -81,6 +83,37 @@ func (ix *Index) migrate() error {
 	return tx.Commit()
 }
 
+// IsCorrupt reports whether err from Open means the file is not a usable
+// database (SQLITE_CORRUPT or SQLITE_NOTADB), as opposed to a busy or
+// permission error that a retry or the user should handle.
+func IsCorrupt(err error) bool {
+	var se *sqlite.Error
+	if !errors.As(err, &se) {
+		return false
+	}
+	code := se.Code() & 0xff // primary code without the extended bits
+	return code == 11 || code == 26
+}
+
+// SetAside renames path and its -wal and -shm files to
+// <name>.broken.<stamp>, so a fresh index can be created in its place.
+// Nothing is deleted. It returns the new names.
+func SetAside(path string) ([]string, error) {
+	stamp := time.Now().UTC().Format("20060102T150405Z")
+	var moved []string
+	for _, sfx := range []string{"", "-wal", "-shm"} {
+		dst := path + ".broken." + stamp + sfx
+		err := os.Rename(path+sfx, dst)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return moved, err
+		}
+		moved = append(moved, dst)
+	}
+	return moved, nil
+}
+
 // Close closes the database.
 func (ix *Index) Close() error { return ix.db.Close() }
 
@@ -109,7 +142,8 @@ func (ix *Index) IDs() ([]string, error) {
 	return ids, rows.Err()
 }
 
-// Upsert adds or replaces one manifest.
+// Upsert adds or replaces one manifest. It does nothing when the index
+// already holds a newer rev, so a slow writer cannot replace a newer row.
 func (ix *Index) Upsert(m *manifest.Manifest) error {
 	tx, err := ix.db.Begin()
 	if err != nil {
@@ -162,6 +196,13 @@ func remove(tx *sql.Tx, id string) error {
 }
 
 func upsert(tx *sql.Tx, m *manifest.Manifest) error {
+	var rev int
+	err := tx.QueryRow(`SELECT coalesce(rev, 0) FROM docs WHERE id = ?`, m.ID).Scan(&rev)
+	if err == nil && rev > m.Rev {
+		return nil
+	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	if err := remove(tx, m.ID); err != nil {
 		return err
 	}
@@ -169,9 +210,10 @@ func upsert(tx *sql.Tx, m *manifest.Manifest) error {
 	if source == "" {
 		source = manifest.SourceModel // the schema default
 	}
-	res, err := tx.Exec(`INSERT INTO docs(id, summary, source, status, last_activity_at, updated_at, artifact_count, next_step)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.ID, m.Intent.Summary, source, m.Status, m.State.LastActivityAt, m.UpdatedAt, len(m.Artifacts), m.State.NextStep)
+	res, err := tx.Exec(`INSERT INTO docs(id, summary, source, status, last_activity_at, updated_at, artifact_count, next_step, rev)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		m.ID, m.Intent.Summary, source, m.Status, utcSeconds(m.State.LastActivityAt), utcSeconds(m.UpdatedAt),
+		len(m.Artifacts), m.State.NextStep, m.Rev)
 	if err != nil {
 		return err
 	}
@@ -190,6 +232,17 @@ func upsert(tx *sql.Tx, m *manifest.Manifest) error {
 		clean(m.Intent.Summary), clean(m.Intent.Goal), clean(strings.Join(m.Intent.Tags, " ")),
 		clean(strings.Join(titles, "\n")), clean(m.State.NextStep), clean(m.State.Summary))
 	return err
+}
+
+// utcSeconds normalises an RFC 3339 timestamp to UTC with second
+// precision, so ORDER BY on the text sorts by time. Unparseable values
+// are kept as they are.
+func utcSeconds(ts string) string {
+	t, err := time.Parse(time.RFC3339Nano, ts)
+	if err != nil {
+		return ts
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 // Snippet markers. They are private-use characters, stripped from indexed
