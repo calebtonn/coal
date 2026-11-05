@@ -52,6 +52,9 @@ Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay o
 
 ## Notes for a restart
 
+- Race detector: no gcc on this laptop, so Zig 0.17.1 is installed at `~/.local/zig` as the C compiler. Run `CGO_ENABLED=1 CC="$HOME/.local/zig/zig cc" ~/.local/go/bin/go test -race ./internal/...`. Store, queue, marker and capture pass under it (checked by the lead).
+- Line budget overruns, accepted: M3 is about 1,100 lines and M6a about 1,635 lines, mostly tests.
+
 - M4 daemon CSP for `index.html`: `default-src 'self'; script-src 'self' 'sha256-...'; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'none'`. Compute the script hash at startup from the inline `data-wf-theme-init` script in the embedded `index.html`, because it changes when the framework changes. If a browser reports style violations, add `'unsafe-inline'` to `style-src` only.
 
 - Go is at `~/.local/go/bin`; the Makefile adds it to PATH.
