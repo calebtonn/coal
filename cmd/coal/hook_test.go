@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/calebtonn/coal/internal/app"
+	"github.com/calebtonn/coal/internal/metrics"
 )
 
 // hook runs coal hook <name> in process with a recorded payload whose
@@ -82,6 +83,9 @@ func TestHookSession(t *testing.T) {
 	ms, _ := a.Store.List()
 	if len(ms) != 1 || ms[0].Intent.Source != "user" || len(ms[0].Artifacts) != 1 {
 		t.Fatalf("manifests: %+v", ms)
+	}
+	if sm, _ := metrics.Summarize(home, time.Time{}); sm.Counts[metrics.ResumeShown] != 1 {
+		t.Errorf("resume_shown: %+v", sm.Counts)
 	}
 	if left, _ := filepath.Glob(filepath.Join(home, "queue", "*.json")); len(left) != 0 {
 		t.Errorf("queue not drained: %v", left)

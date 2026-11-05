@@ -14,6 +14,7 @@ import (
 	"github.com/calebtonn/coal/internal/fold"
 	"github.com/calebtonn/coal/internal/manifest"
 	"github.com/calebtonn/coal/internal/marker"
+	"github.com/calebtonn/coal/internal/metrics"
 	"github.com/calebtonn/coal/internal/queue"
 )
 
@@ -108,7 +109,11 @@ func runHook(home, name string, stdin io.Reader) ([]byte, error) {
 	if err != nil {
 		ids = nil
 	}
-	return capture.ResumeOutput(m, shortID(m.ID, ids))
+	out, err := capture.ResumeOutput(m, shortID(m.ID, ids))
+	if err == nil {
+		metrics.Record(home, metrics.ResumeShown, map[string]any{"manifest": m.ID, "session": e.SessionRef})
+	}
+	return out, err
 }
 
 // sessionManifest returns the manifest the fold attached the session

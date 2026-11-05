@@ -16,6 +16,7 @@ import (
 	"github.com/calebtonn/coal/internal/capture"
 	"github.com/calebtonn/coal/internal/manifest"
 	"github.com/calebtonn/coal/internal/marker"
+	"github.com/calebtonn/coal/internal/metrics"
 	"github.com/calebtonn/coal/internal/store"
 )
 
@@ -49,6 +50,13 @@ type Session struct {
 	// means the model recorded state itself.
 	StateNextStep string `json:"stateNextStep,omitempty"`
 	StateSummary  string `json:"stateSummary,omitempty"`
+	// Wrote is set after the session's first captured file.
+	Wrote bool `json:"wrote,omitempty"`
+	// ResumedFrom is the manifest matched at sessionStart, whose resume
+	// line the hook showed; ResumeActed records that the session then
+	// wrote to it (#12).
+	ResumedFrom string `json:"resumedFrom,omitempty"`
+	ResumeActed bool   `json:"resumeActed,omitempty"`
 }
 
 func op(action string) store.Op { return store.Op{Tool: "coal-adapter-claude-code", Action: action} }
@@ -74,6 +82,7 @@ func Apply(a *app.App, e *capture.Event) error {
 		if s.ManifestID == "" {
 			if m := match(a, s.Cwd); m != nil {
 				s.attach(m)
+				s.ResumedFrom = m.ID
 			}
 		}
 		if err := a.Store.WriteSession(s.SessionRef, &s); err != nil {
@@ -184,12 +193,24 @@ func fileWritten(a *app.App, s *Session, e *capture.Event) error {
 			s.ManifestID = ""
 		}
 	}
+	created := false
 	if s.ManifestID == "" {
 		if m := match(a, s.Cwd); m != nil {
 			s.attach(m)
 		} else if err := create(a, s); err != nil {
 			return err
+		} else {
+			created = true
 		}
+	}
+	fields := map[string]any{"manifest": s.ManifestID, "session": s.SessionRef}
+	if !s.Wrote && !created {
+		metrics.Record(a.Store.Dir(), metrics.SessionAttached, fields)
+	}
+	s.Wrote = true
+	if s.ResumedFrom != "" && s.ResumedFrom == s.ManifestID && !s.ResumeActed {
+		s.ResumeActed = true
+		metrics.Record(a.Store.Dir(), metrics.ResumeActed, fields)
 	}
 	prov := manifest.Provenance{Tool: s.Tool, Model: s.Model, SessionRef: s.SessionRef, CapturedBy: CapturedBy}
 	_, err := a.RegisterArtifact(s.ManifestID, store.ArtifactInput{Path: path, Producer: prov}, op("capture "+filepath.Base(path)))
@@ -211,6 +232,7 @@ func create(a *app.App, s *Session) error {
 		return err
 	}
 	s.attach(m)
+	metrics.Record(a.Store.Dir(), metrics.ManifestCreated, map[string]any{"manifest": m.ID, "session": s.SessionRef})
 	if err := marker.Write(root, m.ID); err != nil {
 		a.Store.Log("capture: marker for %s in %s: %v", m.ID, root, err)
 	}

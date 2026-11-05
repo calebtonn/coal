@@ -10,6 +10,7 @@ import (
 	"github.com/calebtonn/coal/internal/app"
 	"github.com/calebtonn/coal/internal/capture"
 	"github.com/calebtonn/coal/internal/manifest"
+	"github.com/calebtonn/coal/internal/metrics"
 )
 
 type env struct {
@@ -134,8 +135,17 @@ func TestRecordedSession(t *testing.T) {
 	v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) {
 		e.SessionRef, e.Cwd, e.Path = capture.SessionRef("8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"), sub, filepath.Join(sub, "export.js")
 	})
+	// Another file in the same session is not a second attach.
+	os.WriteFile(filepath.Join(sub, "more.js"), []byte("1\n"), 0o644)
+	v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) {
+		e.SessionRef, e.Cwd, e.Path = capture.SessionRef("8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"), sub, filepath.Join(sub, "more.js")
+	})
+	sm, err := metrics.Summarize(v.a.Store.Dir(), time.Time{})
+	if err != nil || sm.Counts[metrics.ManifestCreated] != 1 || sm.Counts[metrics.SessionAttached] != 1 || sm.Counts[metrics.ResumeActed] != 1 {
+		t.Errorf("metrics: %+v %v", sm.Counts, err)
+	}
 	ms = v.all()
-	if len(ms) != 1 || len(ms[0].Artifacts) != 2 || ms[0].Intent.Summary != m.Intent.Summary {
+	if len(ms) != 1 || len(ms[0].Artifacts) != 3 || ms[0].Intent.Summary != m.Intent.Summary {
 		t.Errorf("second session: %d manifests, %+v", len(ms), ms[0].Artifacts)
 	}
 }

@@ -11,7 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/calebtonn/coal/internal/capture"
 	"github.com/calebtonn/coal/internal/daemon"
+	"github.com/calebtonn/coal/internal/fold"
+	"github.com/calebtonn/coal/internal/queue"
 	"github.com/calebtonn/coal/web"
 )
 
@@ -44,6 +47,11 @@ func serveCmd() *cobra.Command {
 			defer stop()
 			return daemon.Serve(ctx, a, fmt.Sprintf("127.0.0.1:%d", port), daemon.Options{
 				UI: dist,
+				Tick: func() {
+					if _, err := queue.Drain(a.Store.Dir(), func(e *capture.Event) error { return fold.Apply(a, e) }, false); err != nil {
+						a.Store.Log("daemon: queue drain: %v", err)
+					}
+				},
 				Ready: func(addr net.Addr) {
 					fmt.Fprintf(cmd.OutOrStdout(), "COAL is running at http://%s\n", addr)
 				},
