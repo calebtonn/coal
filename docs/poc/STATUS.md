@@ -14,6 +14,7 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 
 - M7 web UI on Svelte 5 and `@davenicoll/web-framework` (`1b6c815`, `ce6489d`, `6e0b921`): 15 Vitest tests pass, svelte-check clean. It depends on the sibling checkout through symlinks, so `preserveSymlinks` is set in the Vite and TypeScript configs. Built against the M4 API contract; not yet wired to a daemon. The Ajv validator is generated at build time (`748f9f5`), so no `unsafe-eval` is needed; regenerate with `bun run gen:validator` in `web/` after a schema change (a test fails if it drifts).
 - M2 store: `internal/store` and the `skipped` field on artifact versions (`da41f14`); `coal add`, `coal show`, `coal rm`, and `coal init` through the store, in the commit that adds this line. History commits `manifests/` and `sessions/` only; `config.json` and `.gitignore` stay untracked.
+- M3 index and find: `internal/index` on `modernc.org/sqlite` with FTS5, porter stemming, prefix search, bm25 with user summaries first on ties, HTML-escaped snippets and matched columns (`86bf586`, `04025c3`); `coal find` and `coal reindex`, with `coal add` and `coal rm` updating the index (`4af2b5d`). A search over 10,000 manifests takes about 14 ms. `coal find` shows the shortest unique id prefix of at least 8 characters, because UUIDv7 ids from the same minute share their first 8. `coal show` and `coal open` are not part of M3 here: show landed in M2 and open waits.
 
 ## In progress
 
@@ -21,7 +22,7 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 
 ## Next
 
-- M3 index, M4 daemon (strict CSP on `index.html`), M5 MCP, M6 capture, M8 demo, M9 remaining issue work, M10 import.
+- M4 daemon (strict CSP on `index.html`), M5 MCP, M6 capture, M8 demo, M9 remaining issue work, M10 import.
 
 ## Issues
 
@@ -42,7 +43,7 @@ Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay o
 | #12 Decision-gate metrics | M9 | |
 | #13 Prior art | Done | `aae12af` |
 | #14 Second writer | Done | `aae12af` |
-| #15 coal_find retries, porter | M3 and M5 | |
+| #15 coal_find retries, porter | Porter, prefix, snippet and matched fields done; the `coal_find` description waits for M5 | `86bf586` |
 
 ## Blocked
 
