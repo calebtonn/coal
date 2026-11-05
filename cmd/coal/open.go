@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -25,6 +27,32 @@ func openCommand(goos, path string) (string, []string) {
 	return "xdg-open", []string{path}
 }
 
+// withExtension returns a path the default handler can recognise. Bodies
+// are stored without an extension, so an HTML body is copied once to
+// tmp/<hex>.html in the data directory (scratch, not history). Other
+// bodies are opened in place.
+func withExtension(home, body, typ, mime string) (string, error) {
+	if typ != "html" && !strings.HasPrefix(mime, "text/html") {
+		return body, nil
+	}
+	dst := filepath.Join(home, "tmp", filepath.Base(body)+".html")
+	if _, err := os.Stat(dst); err == nil {
+		return dst, nil // content-addressed, so an existing copy is current
+	}
+	data, err := os.ReadFile(body)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		return "", err
+	}
+	tmp := dst + ".part"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return "", err
+	}
+	return dst, os.Rename(tmp, dst)
+}
+
 func openCmd() *cobra.Command {
 	var n int
 	cmd := &cobra.Command{
@@ -41,10 +69,13 @@ func openCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if n < 1 || n > len(m.Artifacts) {
-				return fmt.Errorf("manifest %s has %d artifacts; --artifact takes 1 to %d", id, len(m.Artifacts), len(m.Artifacts))
+			if len(m.Artifacts) == 0 {
+				return fmt.Errorf("manifest %s has no artifacts", id)
 			}
-			art := m.Artifacts[n-1]
+			if n < 0 || n >= len(m.Artifacts) {
+				return fmt.Errorf("manifest %s has %d artifacts; --artifact takes 0 to %d", id, len(m.Artifacts), len(m.Artifacts)-1)
+			}
+			art := m.Artifacts[n]
 			if art.Skipped != "" {
 				return fmt.Errorf("artifact %d (%s) has no stored body: %s", n, art.Title, art.Skipped)
 			}
@@ -55,6 +86,9 @@ func openCmd() *cobra.Command {
 			if _, err := os.Stat(path); err != nil {
 				return fmt.Errorf("artifact %d (%s): %w", n, art.Title, err)
 			}
+			if path, err = withExtension(a.Store.Dir(), path, art.Type, art.MIME); err != nil {
+				return fmt.Errorf("artifact %d (%s): %w", n, art.Title, err)
+			}
 			name, cargs := openCommand(runtime.GOOS, path)
 			if err := opener(name, cargs...); err != nil {
 				return fmt.Errorf("%s: %w", name, err)
@@ -63,6 +97,6 @@ func openCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&n, "artifact", 1, "which artifact to open, counting from 1 in manifest order")
+	cmd.Flags().IntVar(&n, "artifact", 0, "which artifact to open, counting from 0 in manifest order")
 	return cmd
 }
