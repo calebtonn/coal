@@ -8,6 +8,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/calebtonn/coal/internal/capture"
 	"github.com/calebtonn/coal/internal/manifest"
@@ -85,6 +86,10 @@ func TestDrainNonBlocking(t *testing.T) {
 	if n != 0 || err != nil || called {
 		t.Fatalf("busy lock: n=%d err=%v called=%v", n, err, called)
 	}
+	start := time.Now()
+	if n, busy, err := DrainUntil(dir, nil, start.Add(50*time.Millisecond)); n != 0 || !busy || err != nil || time.Since(start) < 50*time.Millisecond {
+		t.Fatalf("DrainUntil busy: n=%d busy=%v err=%v after %v", n, busy, err, time.Since(start))
+	}
 	done := make(chan int)
 	go func() { n, _ := Drain(dir, func(*capture.Event) error { return nil }, true); done <- n }()
 	select {
@@ -138,5 +143,14 @@ func TestEnqueueAssignsID(t *testing.T) {
 	}
 	if err := Enqueue(dir, &capture.Event{ID: "../x"}); err == nil {
 		t.Error("path id accepted")
+	}
+}
+
+func TestDrainUntilFree(t *testing.T) {
+	dir := t.TempDir()
+	_ = Enqueue(dir, ev(capture.KindPrompt))
+	n, busy, err := DrainUntil(dir, func(*capture.Event) error { return nil }, time.Now().Add(time.Second))
+	if n != 1 || busy || err != nil {
+		t.Fatalf("n=%d busy=%v err=%v", n, busy, err)
 	}
 }

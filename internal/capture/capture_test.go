@@ -145,7 +145,7 @@ func TestResumeOutput(t *testing.T) {
 	m.State.NextStep = "Add CSV export"
 	m.State.OpenQuestions = []string{"Which currency?"}
 	m.Artifacts = []manifest.Artifact{{Title: "budget.html", URI: "file:///p/budget/budget.html"}}
-	b, err := ResumeOutput(m)
+	b, err := ResumeOutput(m, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,11 +171,11 @@ func TestResumeOutput(t *testing.T) {
 	}
 
 	m.State.NextStep, m.State.OpenQuestions, m.Intent.Source = "", nil, manifest.SourceModel
-	if got := ResumeLine(m); got != `COAL: Resuming "Household budget tracker as a single HTML page". coal rename `+m.ID[:8]+` "..." to fix the summary.` {
+	if got := ResumeLine(m, m.ID[:10]); got != `COAL: Resuming "Household budget tracker as a single HTML page". coal rename `+m.ID[:10]+` "..." to fix the summary.` {
 		t.Errorf("model line: %q", got)
 	}
 	m.State.NextStep, m.State.OpenQuestions, m.Intent.Source = "x", []string{"a", "b"}, manifest.SourceUser
-	if got := ResumeLine(m); got != `COAL: You left off at "x". 2 open questions.` {
+	if got := ResumeLine(m, ""); got != `COAL: You left off at "x". 2 open questions.` {
 		t.Errorf("two questions: %q", got)
 	}
 
@@ -183,7 +183,7 @@ func TestResumeOutput(t *testing.T) {
 		m.Artifacts = append(m.Artifacts, manifest.Artifact{Title: strings.Repeat("t", 90), URI: "file:///" + strings.Repeat("u", 200) + string(rune('a'+i%26))})
 	}
 	m.State.Summary = strings.Repeat("long ", 200)
-	b, _ = ResumeOutput(m)
+	b, _ = ResumeOutput(m, "")
 	_ = json.Unmarshal(b, &out)
 	ctx = out.HookSpecificOutput.AdditionalContext
 	if n := len([]rune(ctx)); n >= MaxContext || !strings.Contains(ctx, "more") || !strings.Contains(ctx, "coal_update_state") {

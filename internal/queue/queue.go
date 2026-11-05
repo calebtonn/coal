@@ -67,43 +67,62 @@ func Enqueue(dataDir string, e *capture.Event) error {
 // too. When wait is false and another process holds the lock, Drain
 // returns 0, nil at once.
 func Drain(dataDir string, apply func(*capture.Event) error, wait bool) (n int, err error) {
-	dir := Dir(dataDir)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return 0, err
-	}
-	lock, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return 0, err
-	}
-	defer lock.Close()
 	how := syscall.LOCK_EX
 	if !wait {
 		how |= syscall.LOCK_NB
 	}
-	if err := flock(lock, how); err != nil {
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return 0, nil
+	n, _, err = drain(dataDir, apply, func(f *os.File) error { return flock(f, how) })
+	return n, err
+}
+
+// DrainUntil is Drain that waits for the lock only until deadline. busy
+// reports that the lock never came free, so nothing was folded.
+func DrainUntil(dataDir string, apply func(*capture.Event) error, deadline time.Time) (n int, busy bool, err error) {
+	return drain(dataDir, apply, func(f *os.File) error {
+		for {
+			err := flock(f, syscall.LOCK_EX|syscall.LOCK_NB)
+			if !errors.Is(err, syscall.EWOULDBLOCK) || time.Now().After(deadline) {
+				return err
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
-		return 0, fmt.Errorf("queue lock: %w", err)
+	})
+}
+
+func drain(dataDir string, apply func(*capture.Event) error, take func(*os.File) error) (n int, busy bool, err error) {
+	dir := Dir(dataDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return 0, false, err
+	}
+	lock, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return 0, false, err
+	}
+	defer lock.Close()
+	if err := take(lock); err != nil {
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return 0, true, nil
+		}
+		return 0, false, fmt.Errorf("queue lock: %w", err)
 	}
 	defer flock(lock, syscall.LOCK_UN)
 
 	for {
 		names, err := pending(dir)
 		if err != nil || len(names) == 0 {
-			return n, err
+			return n, false, err
 		}
 		for _, name := range names {
 			path := filepath.Join(dir, name)
 			if ferr := applyFile(path, apply); ferr != nil {
 				logf(dataDir, "queue: %s: %v", name, ferr)
 				if merr := moveFailed(dir, name); merr != nil {
-					return n, fmt.Errorf("queue: cannot set aside %s: %w", name, merr)
+					return n, false, fmt.Errorf("queue: cannot set aside %s: %w", name, merr)
 				}
 				continue
 			}
 			if err := os.Remove(path); err != nil {
-				return n, fmt.Errorf("queue: cannot remove folded %s: %w", name, err)
+				return n, false, fmt.Errorf("queue: cannot remove folded %s: %w", name, err)
 			}
 			n++
 		}

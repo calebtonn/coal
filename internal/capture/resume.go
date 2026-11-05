@@ -21,13 +21,15 @@ type resumeJSON struct {
 
 // ResumeOutput builds the SessionStart hook output for a matched
 // manifest (#3): a systemMessage the user sees before typing, and
-// additionalContext the model reads before the first prompt.
-func ResumeOutput(m *manifest.Manifest) ([]byte, error) {
+// additionalContext the model reads before the first prompt. shortID is
+// the id prefix shown in the rename hint; the caller picks one that is
+// unique among all manifests, and an empty value means the full id.
+func ResumeOutput(m *manifest.Manifest, shortID string) ([]byte, error) {
 	if m == nil {
 		return nil, fmt.Errorf("resume: no manifest")
 	}
 	var out resumeJSON
-	out.SystemMessage = ResumeLine(m)
+	out.SystemMessage = ResumeLine(m, shortID)
 	out.HookSpecificOutput.HookEventName = "SessionStart"
 	out.HookSpecificOutput.AdditionalContext = resumeContext(m)
 	b, err := json.Marshal(out)
@@ -38,7 +40,7 @@ func ResumeOutput(m *manifest.Manifest) ([]byte, error) {
 }
 
 // ResumeLine is the one-line systemMessage shown in the terminal.
-func ResumeLine(m *manifest.Manifest) string {
+func ResumeLine(m *manifest.Manifest, shortID string) string {
 	var b strings.Builder
 	if next := oneLine(m.State.NextStep, 200); next != "" {
 		fmt.Fprintf(&b, "COAL: You left off at %q.", next)
@@ -53,7 +55,10 @@ func ResumeLine(m *manifest.Manifest) string {
 		fmt.Fprintf(&b, "COAL: Resuming %q.", oneLine(m.Intent.Summary, 200))
 	}
 	if m.Intent.Source == manifest.SourceModel {
-		fmt.Fprintf(&b, ` coal rename %s "..." to fix the summary.`, shortID(m.ID))
+		if shortID == "" {
+			shortID = m.ID
+		}
+		fmt.Fprintf(&b, ` coal rename %s "..." to fix the summary.`, shortID)
 	}
 	return b.String()
 }
@@ -116,11 +121,4 @@ func resumeContext(m *manifest.Manifest) string {
 // oneLine collapses whitespace and cuts to n characters on a word boundary.
 func oneLine(s string, n int) string {
 	return trimWords(strings.Join(strings.Fields(s), " "), n)
-}
-
-func shortID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
 }
