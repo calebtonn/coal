@@ -48,7 +48,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Decision.** Code and spec both Apache 2.0. The spec gets its own repo and versioning once there is a second implementer.
 
-**Consequences.** Commercial options (if any) live above this layer: sync, teams, hosted policy. The core stays free.
+**Consequences.** Decided 2026-11-04: fully open source, no paid tier planned. Sync, org install and any hosted piece are open too. If that ever changes it needs a new ADR and a check against the author's employment terms.
 
 ## ADR-007: The whiteboard pipeline is deferred
 

@@ -102,7 +102,7 @@ What it proves: this is a standard, not a tool. A second implementer writes mani
 - Encrypted multi-device sync
 - Export and import between stores
 - Optional fact-store adapter (for example OpenMemory) for preferences
-- Org tier: fleet install, SSO, aggregate visibility only
+- Org install and fleet config, open source like the rest
 
 Stop condition: a manifest written by software this repo did not produce validates and resumes here.
 
@@ -115,4 +115,4 @@ Stop condition: a manifest written by software this repo did not produce validat
 
 ## License
 
-Apache 2.0 (proposed).
+Apache 2.0. See `LICENSE`. COAL is and will stay open source: the schema, the library, the CLI, every adapter, and the policy engine when it exists. There is no paid tier planned.
