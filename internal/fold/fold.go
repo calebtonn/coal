@@ -41,15 +41,13 @@ type Session struct {
 	LastAssistantMessage string `json:"lastAssistantMessage,omitempty"`
 	StartedAt            string `json:"startedAt"`
 	EndedAt              string `json:"endedAt,omitempty"`
-	RecordedByModel      bool   `json:"recordedByModel"`
-	// Placeholder is set when this session created the manifest with a
-	// summary from the file name, so a later passing prompt replaces it.
-	Placeholder bool `json:"placeholder,omitempty"`
-	// StateNextStep and StateSummary are the manifest state when the
-	// session attached or last wrote it. A difference at sessionEnd
-	// means the model recorded state itself.
-	StateNextStep string `json:"stateNextStep,omitempty"`
-	StateSummary  string `json:"stateSummary,omitempty"`
+	// RecordedByModel is set at sessionEnd when the manifest's state
+	// stamp shows coal_update_state or a PATCH wrote state during the
+	// session, so the extraction fallback was skipped.
+	RecordedByModel bool `json:"recordedByModel"`
+	// Unanchored is set once the session is known to run in the home
+	// directory, above it, or at the root, where nothing is captured.
+	Unanchored bool `json:"unanchored,omitempty"`
 	// Wrote is set after the session's first captured file.
 	Wrote bool `json:"wrote,omitempty"`
 	// ResumedFrom is the manifest matched at sessionStart, whose resume
@@ -118,10 +116,7 @@ func Apply(a *app.App, e *capture.Event) error {
 	return a.Store.WriteSession(s.SessionRef, &s)
 }
 
-func (s *Session) attach(m *manifest.Manifest) {
-	s.ManifestID = m.ID
-	s.StateNextStep, s.StateSummary = m.State.NextStep, m.State.Summary
-}
+func (s *Session) attach(m *manifest.Manifest) { s.ManifestID = m.ID }
 
 // match picks the manifest for cwd among all manifests in the store.
 func match(a *app.App, cwd string) *manifest.Manifest {
@@ -129,8 +124,7 @@ func match(a *app.App, cwd string) *manifest.Manifest {
 	return marker.Match(cwd, ms)
 }
 
-// prompt keeps the first prompt that passes the summary filter (#11),
-// and upgrades a placeholder summary this session wrote to it.
+// prompt keeps the first prompt that passes the summary filter (#11).
 func prompt(a *app.App, s *Session, text string) error {
 	if s.FirstPrompt != "" {
 		return nil
@@ -140,17 +134,37 @@ func prompt(a *app.App, s *Session, text string) error {
 		return nil
 	}
 	s.FirstPrompt = sum
-	if !s.Placeholder || s.ManifestID == "" {
+	return upgradePlaceholder(a, s)
+}
+
+// isPlaceholder reports whether m still carries the "Work in <project>"
+// summary capture writes when no prompt passed the filter.
+func isPlaceholder(m *manifest.Manifest) bool {
+	if m.Intent.Source != manifest.SourceModel {
+		return false
+	}
+	for _, c := range m.Contexts {
+		if c.Kind == marker.KindPath && m.Intent.Summary == "Work in "+filepath.Base(c.Key) {
+			return true
+		}
+	}
+	return false
+}
+
+// upgradePlaceholder replaces a placeholder summary on the session's
+// manifest with the session's first passing prompt, in the user's
+// words. Any session may do it, not only the one that created it.
+func upgradePlaceholder(a *app.App, s *Session) error {
+	if s.FirstPrompt == "" || s.ManifestID == "" {
 		return nil
 	}
-	s.Placeholder = false
 	_, err := a.Update(s.ManifestID, 0, func(m *manifest.Manifest) error {
-		if m.Intent.Source != manifest.SourceModel {
+		if !isPlaceholder(m) {
 			return store.ErrNoChange
 		}
-		m.Intent.Summary, m.Intent.Source = sum, manifest.SourceUser
+		m.Intent.Summary, m.Intent.Source = s.FirstPrompt, manifest.SourceUser
 		return nil
-	}, op("summary from the first prompt"))
+	}, op("summary from a prompt"))
 	if errors.Is(err, store.ErrNotFound) {
 		return nil
 	}
@@ -188,6 +202,22 @@ func fileWritten(a *app.App, s *Session, e *capture.Event) error {
 	if skipFile(a, path) {
 		return nil
 	}
+	// Only files inside the session's project are captured (C2), and
+	// nothing at all when the project would be ~, above it, or / (C1).
+	root := marker.ProjectRoot(s.Cwd)
+	if marker.Unanchored(root) {
+		if !s.Unanchored {
+			s.Unanchored = true
+			a.Store.Log("capture: unanchored session in %s, not captured", root)
+		}
+		return nil
+	}
+	real, _ := filepath.EvalSymlinks(path)
+	if real != root && !strings.HasPrefix(real, root+"/") {
+		a.Store.Log("capture: %s is outside the project %s, not captured", real, root)
+		return nil
+	}
+	path = real
 	if s.ManifestID != "" {
 		if _, err := a.Get(s.ManifestID); errors.Is(err, store.ErrNotFound) {
 			s.ManifestID = ""
@@ -197,6 +227,9 @@ func fileWritten(a *app.App, s *Session, e *capture.Event) error {
 	if s.ManifestID == "" {
 		if m := match(a, s.Cwd); m != nil {
 			s.attach(m)
+			if err := upgradePlaceholder(a, s); err != nil {
+				return err
+			}
 		} else if err := create(a, s); err != nil {
 			return err
 		} else {
@@ -224,7 +257,6 @@ func create(a *app.App, s *Session) error {
 	root := marker.ProjectRoot(s.Cwd)
 	if summary == "" {
 		summary, source = "Work in "+filepath.Base(root), manifest.SourceModel
-		s.Placeholder = true
 	}
 	m := manifest.New(summary, source, manifest.Provenance{Tool: s.Tool, Model: s.Model, SessionRef: s.SessionRef, CapturedBy: CapturedBy})
 	m.Contexts = marker.Contexts(s.Cwd)
@@ -239,8 +271,9 @@ func create(a *app.App, s *Session) error {
 	return nil
 }
 
-// closeOut applies the sessionEnd fallback (#2): unless the model
-// recorded state during the session, take state.summary and nextStep
+// closeOut applies the sessionEnd fallback (#2): unless the manifest's
+// state stamp shows a deliberate state write (coal_update_state or a
+// PATCH) since the session started, take state.summary and nextStep
 // from the last assistant message. intent.summary is never touched.
 func closeOut(a *app.App, s *Session) error {
 	if s.ManifestID == "" {
@@ -252,15 +285,14 @@ func closeOut(a *app.App, s *Session) error {
 	} else if err != nil {
 		return err
 	}
-	if m.State.NextStep != s.StateNextStep || m.State.Summary != s.StateSummary {
+	if st, ok := manifest.StateStampOf(m); ok && st.At >= s.StartedAt {
 		s.RecordedByModel = true
 	}
 	sum, next := capture.ExtractState(s.LastAssistantMessage)
 	if s.RecordedByModel || sum == "" && next == "" {
-		s.attach(m)
 		return nil
 	}
-	m, err = a.Update(s.ManifestID, 0, func(m *manifest.Manifest) error {
+	_, err = a.Update(s.ManifestID, 0, func(m *manifest.Manifest) error {
 		if sum != "" {
 			m.State.Summary = sum
 		}
@@ -272,11 +304,7 @@ func closeOut(a *app.App, s *Session) error {
 		}
 		return nil
 	}, op("session end"))
-	if err != nil {
-		return err
-	}
-	s.attach(m)
-	return nil
+	return err
 }
 
 // closeStale closes out sessions other than current that never ended

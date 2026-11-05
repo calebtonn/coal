@@ -158,7 +158,11 @@ func TestModelRecordedStateWins(t *testing.T) {
 	v.send("post-tool-use-write.json", "PostToolUse", nil)
 	id := v.all()[0].ID
 	// What coal_update_state would do mid-session.
-	v.a.Update(id, 0, func(m *manifest.Manifest) error { m.State.NextStep = "Add charts"; return nil }, op("test"))
+	v.a.Update(id, 0, func(m *manifest.Manifest) error {
+		m.State.NextStep = "Add charts"
+		manifest.StampState(m, "coal-mcp")
+		return nil
+	}, op("test"))
 	v.send("stop.json", "Stop", nil)
 	v.send("session-end.json", "SessionEnd", nil)
 	m, _ := v.a.Get(id)
@@ -233,5 +237,91 @@ func TestStaleSessionClosed(t *testing.T) {
 	v.a.Store.ReadSession(capture.SessionRef("8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"), &s2)
 	if s2.ManifestID != m.ID {
 		t.Errorf("new session not matched: %+v", s2)
+	}
+}
+
+const sidB = "8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"
+
+// asB makes an event belong to the second recorded session.
+func asB(e *capture.Event) { e.SessionRef = capture.SessionRef(sidB) }
+
+func TestTwoSessionsBothExtract(t *testing.T) {
+	v := setup(t)
+	v.write("budget.html", "x")
+	// A creates the manifest, then B starts on it, then A ends with an
+	// extraction, then B ends. B must still get its own extraction.
+	v.send("session-start.json", "SessionStart", nil)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", nil)
+	v.send("post-tool-use-write.json", "PostToolUse", nil)
+	v.send("session-start-resume.json", "SessionStart", nil)
+	v.send("stop.json", "Stop", nil)
+	v.send("session-end.json", "SessionEnd", nil)
+	if m := v.all()[0]; m.State.NextStep != "add CSV export" {
+		t.Fatalf("A's extraction: %+v", m.State)
+	}
+	v.send("post-tool-use-edit.json", "PostToolUse", func(e *capture.Event) { asB(e); v.write("budget.html", "y") })
+	v.send("stop.json", "Stop", func(e *capture.Event) {
+		asB(e)
+		e.LastAssistantMessage = "Added CSV export.\n\nNext step: add charts"
+	})
+	v.send("session-end.json", "SessionEnd", asB)
+	ms := v.all()
+	if len(ms) != 1 || ms[0].State.NextStep != "add charts" || ms[0].State.Summary != "Added CSV export." {
+		t.Errorf("B's extraction did not apply: %+v", ms[0].State)
+	}
+}
+
+func TestUnanchoredSession(t *testing.T) {
+	v := setup(t)
+	home := os.Getenv("HOME")
+	os.MkdirAll(filepath.Join(home, ".git"), 0o755)
+	os.WriteFile(filepath.Join(home, "notes.md"), []byte("hi"), 0o644)
+	for _, file := range []string{"session-start.json", "user-prompt-submit.json"} {
+		v.send(file, "", func(e *capture.Event) { e.Cwd = home })
+	}
+	for range 2 {
+		v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) { e.Cwd, e.Path = home, filepath.Join(home, "notes.md") })
+	}
+	if ms := v.all(); len(ms) != 0 {
+		t.Errorf("captured %d manifests in ~", len(ms))
+	}
+	if _, err := os.Stat(filepath.Join(home, ".coal")); err == nil {
+		t.Error("wrote ~/.coal")
+	}
+	log, _ := os.ReadFile(filepath.Join(v.a.Store.Dir(), "logs", "coal.log"))
+	if strings.Count(string(log), "unanchored session in "+home+", not captured") != 1 {
+		t.Errorf("log:\n%s", log)
+	}
+}
+
+func TestOutsideProjectNotCaptured(t *testing.T) {
+	v := setup(t)
+	outside := filepath.Join(filepath.Dir(v.project), "elsewhere.html")
+	os.WriteFile(outside, []byte("x"), 0o644)
+	link := filepath.Join(v.project, "link.html")
+	os.Symlink(outside, link)
+	v.send("session-start.json", "SessionStart", nil)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", nil)
+	for _, p := range []string{outside, link} {
+		v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) { e.Path = p })
+	}
+	if ms := v.all(); len(ms) != 0 {
+		t.Errorf("files outside the project made %d manifests", len(ms))
+	}
+}
+
+func TestPlaceholderUpgradedByAnySession(t *testing.T) {
+	v := setup(t)
+	v.write("budget.html", "x")
+	v.send("session-start.json", "SessionStart", nil)
+	v.send("post-tool-use-write.json", "PostToolUse", nil)
+	v.send("session-end.json", "SessionEnd", nil)
+	if m := v.all()[0]; m.Intent.Summary != "Work in budget" {
+		t.Fatalf("placeholder: %+v", m.Intent)
+	}
+	v.send("session-start-resume.json", "SessionStart", nil)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", func(e *capture.Event) { asB(e); e.Prompt = "Add a CSV export button to the budget page" })
+	if m := v.all()[0]; m.Intent.Summary != "Add a CSV export button to the budget page" || m.Intent.Source != manifest.SourceUser {
+		t.Errorf("not upgraded: %+v", m.Intent)
 	}
 }
