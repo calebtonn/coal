@@ -109,7 +109,7 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 
 ### T14. Decision gate
 - Use COAL for real for one week. Every day, log: did it capture what I built, did I find things by intent, did it get in the way
-- Write `docs/RETRO.md` with the answers and a recommendation: continue to Phase 2, pivot, or stop
+- Write `docs/RETRO.md` with the answers and a recommendation: continue to Phase 2, pivot, or stop. The retro reads `coal stats --days 7` alongside the daily notes: resume lines shown and acted on, `coal_find` calls by tool, sessions attached versus manifests created, and renames. A suggested bar: resume is acted on more often than it is ignored, and there is fewer than one manual merge per ten sessions
 - **Accept:** retro written; decision made
 
 ## Deferred (explicitly not now)
