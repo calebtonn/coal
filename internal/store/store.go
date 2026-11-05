@@ -192,6 +192,9 @@ func (s *Store) read(id string) (*manifest.Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("manifests/%s.json: %w", id, err)
 	}
+	if m.ID != id {
+		return nil, fmt.Errorf("manifests/%s.json holds id %q; the file name and the id must match", id, m.ID)
+	}
 	return m, nil
 }
 

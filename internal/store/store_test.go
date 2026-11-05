@@ -195,3 +195,18 @@ func TestPathSafety(t *testing.T) {
 		t.Fatalf("%v %v", got, err)
 	}
 }
+
+func TestIDMustMatchFileName(t *testing.T) {
+	s, m := setup(t)
+	data, err := os.ReadFile(filepath.Join(s.Dir(), "manifests", m.ID+".json"))
+	must(t, err)
+	other := manifest.NewID()
+	must(t, os.WriteFile(filepath.Join(s.Dir(), "manifests", other+".json"), data, 0o600))
+	if _, err := s.Get(other); err == nil || !strings.Contains(err.Error(), "must match") {
+		t.Fatalf("Get of a copied file: %v", err)
+	}
+	ms, errs := s.List()
+	if len(ms) != 1 || ms[0].ID != m.ID || len(errs) != 1 || !strings.Contains(errs[0].Error(), other) {
+		t.Fatalf("List: %d manifests, errs %v", len(ms), errs)
+	}
+}
