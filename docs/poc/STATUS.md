@@ -27,7 +27,12 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 
 ## In progress
 
-- Fable 5.1 review gate on frozen worktree `.sandbox/review-85e5f23`: three reviewers (capture path; storage, schema and index; daemon, MCP and web UI).
+- Fable 5.1 review gate on frozen worktree `.sandbox/review-85e5f23`. All three reviews are in. Findings and owners:
+  - Capture (C1 to C12, builder on M6): two high. A project root at `$HOME` wrote the marker to `~/.coal`, the default data dir name, and anchored every session under home. Files outside the project were copied into the store, secrets included. Medium: 1 MiB stdin cap, infrastructure errors moving the whole queue to `failed/`, no top-level recover in hooks, state "recorded by model" inferred from any diff, wrapper-tag prompts taken as user summaries.
+  - Storage (S1 to S10, builder on M3): one high. Unknown fields nested below the top level, including `artifacts[].ext`, were dropped on rewrite. Medium: a corrupt `index.db` blocked every command; stale cross-process upserts; raw URI comparison.
+  - Surfaces (U1 to U9, builders on M4 and M5): the secret guard was too narrow, and every reviewer found this. One MCP description named a type value the schema rejects. Several lows. Network binding, Host and Origin guards, the artifact sandbox, UI escaping and PATCH or MCP summary protection were confirmed sound.
+  - Shared state stamp for C6 added by the lead (`ff0c439`).
+  - After the fixes land: a second Fable pass on the fixed findings, then `make demo` twice and `make e2e`.
 
 - Nothing.
 
