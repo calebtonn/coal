@@ -20,7 +20,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-003: Claude Code hooks for first capture, no browser capture in MVP
 
-**Context.** Browser capture from claude.ai or chatgpt.com requires an extension and fights with page structure that changes without notice. Claude Code exposes deterministic hooks.
+**Context.** Browser capture from claude.ai or chatgpt.com requires an extension and fights with page structure that changes without notice. Claude Code exposes deterministic hooks. It is no longer the only coding agent that does: Cursor, Codex CLI and Gemini CLI have them too (see ADR-011).
 
 **Decision.** MVP captures only from Claude Code. Browser capture is Phase 2.
 

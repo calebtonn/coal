@@ -46,7 +46,7 @@ Two packages. `diamond` is the library. `coal` is what you install. I will split
 
 ## What the MVP covers
 
-Capture comes from Claude Code only, because it is the one mainstream tool with lifecycle hooks today. The case that started this (a page buried in a claude.ai chat) is handled in the MVP by running `coal add` on a downloaded file. Browser capture comes in Phase 2. The MVP shows that the record and the resume work with one harness. It does not yet show that capture works everywhere.
+Capture comes from Claude Code only, because one adapter is enough to test the record. Cursor, Codex CLI and Gemini CLI have lifecycle hooks too, and all of them pass JSON on stdin, so their adapters are small and come first in Phase 2 (ADR-011). The case that started this (a page buried in a claude.ai chat) is handled in the MVP by running `coal add` on a downloaded file. Browser capture comes in Phase 2. The MVP shows that the record and the resume work with one harness. It does not yet show that capture works everywhere.
 
 ## Phases
 
