@@ -21,10 +21,11 @@ fmt:
 	$(dir $(GO))gofmt -w cmd internal spec
 
 web:
-	@echo "not yet"
+	cd web && bun install --frozen-lockfile && bun run build
 
 dev:
-	@echo "not yet"
+	$(MAKE) web build
+	COAL_HOME=$(SANDBOX)/coal $(BIN) serve
 
 demo-init: build
 	COAL_HOME=$(SANDBOX)/coal $(BIN) init
