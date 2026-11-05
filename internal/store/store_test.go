@@ -160,7 +160,7 @@ func TestHistory(t *testing.T) {
 	if len(lines) != 3 || lines[1] != "claude-code: register artifact budget.html on "+m.ID {
 		t.Fatalf("want 3 commits, got:\n%s", log)
 	}
-	if tracked, _ := s.git("ls-files"); strings.Contains(tracked, "artifacts/") || strings.Contains(tracked, ".lock") {
+	if tracked, _ := s.git("ls-files"); strings.Contains(tracked, "artifacts/") || strings.Contains(tracked, ".lock") || strings.Contains(tracked, "sessions/") {
 		t.Fatalf("unexpected tracked paths:\n%s", tracked)
 	}
 }
