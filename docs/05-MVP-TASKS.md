@@ -96,8 +96,8 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 ## Week 6: Demo and decision
 
 ### T12b. Publish the schema at its id
-- Static site from the repo (GitHub Pages or similar) serving `spec/` at `https://coalmine.io/schema/`
-- coalmine.app redirects to coalmine.io
+- Static site from the repo (`site/`, deployed to GitHub Pages by `.github/workflows/pages.yml`) serving the schema at its `$id`
+- coalmine.app redirects to coalmine.io (a DNS step for the owner, nothing in the repo)
 - **Accept:** `curl https://coalmine.io/schema/intent-manifest/0.1.json` returns the committed schema byte for byte
 
 ### T13. Demo script and recording
@@ -117,4 +117,3 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 - Policy engine, interrupt gating, Slack and calendar signals
 - Sync, encryption, accounts, teams
 - Published npm packages under a real org
-- Website for the spec

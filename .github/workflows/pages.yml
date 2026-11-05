@@ -1,0 +1,68 @@
+name: Deploy site
+
+# Publishes site/ and the Intent Manifest schema to GitHub Pages (coalmine.io).
+# Runs when a change to the site or the schema lands on main, when run by hand,
+# and once a day to refresh the star count.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "assets/icon-*.png"
+      - "spec/intent-manifest.schema.json"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+  # Rebuild once a day so the star count on the GitHub button stays current.
+  schedule:
+    - cron: "17 6 * * *"
+    # In a public repo GitHub turns off scheduled runs after 60 days without
+    # activity. Turn this back on under Actions if the star count stops updating.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the star count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stars=$(curl -fsS --max-time 15 --retry 2 --retry-delay 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}" \
+            | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("stargazers_count", ""))') || stars=""
+          case "$stars" in ''|*[!0-9]*) stars="" ;; esac
+          echo "STARS=$stars" >> "$GITHUB_ENV"
+      - name: Build
+        run: ./site/build.sh _site
+      - name: Check the schema is served byte for byte
+        run: cmp spec/intent-manifest.schema.json _site/schema/intent-manifest/0.1.json
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
