@@ -12,12 +12,11 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 
 - PR #10 fetched as `pr-10` and merged into `poc/go` (`0c95b8b`); ADR-011 to ADR-015 marked accepted for the POC. Follow-up edits to F5, T08, T09, the README phase table, the definition of done and the capture diagram (`731d9bf`).
 
-- M7 web UI on Svelte 5 and `@davenicoll/web-framework` (`1b6c815`, `ce6489d`, `6e0b921`): 15 Vitest tests pass, svelte-check clean. It depends on the sibling checkout through symlinks, so `preserveSymlinks` is set in the Vite and TypeScript configs. Built against the M4 API contract; not yet wired to a daemon.
+- M7 web UI on Svelte 5 and `@davenicoll/web-framework` (`1b6c815`, `ce6489d`, `6e0b921`): 15 Vitest tests pass, svelte-check clean. It depends on the sibling checkout through symlinks, so `preserveSymlinks` is set in the Vite and TypeScript configs. Built against the M4 API contract; not yet wired to a daemon. The Ajv validator is generated at build time (`748f9f5`), so no `unsafe-eval` is needed; regenerate with `bun run gen:validator` in `web/` after a schema change (a test fails if it drifts).
 
 ## In progress
 
 - M2 store (builder on Opus).
-- M7 follow-up: precompile the Ajv validator at build time so the daemon's Content-Security-Policy needs no `unsafe-eval`.
 
 ## Next
 
@@ -49,6 +48,8 @@ Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay o
 - Nothing.
 
 ## Notes for a restart
+
+- M4 daemon CSP for `index.html`: `default-src 'self'; script-src 'self' 'sha256-...'; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'none'`. Compute the script hash at startup from the inline `data-wf-theme-init` script in the embedded `index.html`, because it changes when the framework changes. If a browser reports style violations, add `'unsafe-inline'` to `style-src` only.
 
 - Go is at `~/.local/go/bin`; the Makefile adds it to PATH.
 - `manifest.Manifest` keeps unknown top-level fields in `Extra` and writes them back, so a rewrite does not drop them. Unknown fields inside nested objects are not kept yet.
