@@ -181,7 +181,8 @@ func (s *server) readArtifact(_ context.Context, _ *mcp.CallToolRequest, in Read
 	idx := 0
 	switch {
 	case in.URI != "":
-		idx = slices.IndexFunc(m.Artifacts, func(a manifest.Artifact) bool { return a.URI == in.URI })
+		want := store.CanonicalURI(in.URI)
+		idx = slices.IndexFunc(m.Artifacts, func(a manifest.Artifact) bool { return a.URI != "" && store.CanonicalURI(a.URI) == want })
 		if idx < 0 {
 			return fail(fmt.Errorf("no artifact with uri %q on manifest %s; coal_get lists its artifacts", in.URI, m.ID))
 		}
@@ -322,7 +323,11 @@ func (s *server) registerArtifact(_ context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return fail(err)
 	}
-	ai := store.ArtifactInput{Path: in.Path, URI: in.URI, Title: in.Title, Type: in.Type, MIME: in.MIME,
+	uri := in.URI
+	if uri != "" {
+		uri = store.CanonicalURI(uri)
+	}
+	ai := store.ArtifactInput{Path: in.Path, URI: uri, Title: in.Title, Type: in.Type, MIME: in.MIME,
 		Producer: manifest.Provenance{Tool: clientName(req), CapturedBy: capturedBy}}
 	if in.Path != "" {
 		if !filepath.IsAbs(in.Path) {

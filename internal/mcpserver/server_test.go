@@ -164,11 +164,13 @@ func TestReadArtifactVersions(t *testing.T) {
 	}
 	page2 := page1 + "<p>CSV export</p>"
 	var reg RegisterOutput
-	res = f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "content": page2, "uri": f.uri}, &reg)
+	res = f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "content": page2, "uri": strings.Replace(f.uri, "file://", "FILE://", 1)}, &reg)
 	if res.IsError || reg.VersionCount != 2 || reg.ArtifactIndex != 0 {
 		t.Fatalf("register: %+v %s", reg, resText(res))
 	}
-	f.call("coal_read_artifact", map[string]any{"id": f.id, "uri": f.uri}, &out)
+	// Another spelling of the same uri reads the same artifact.
+	other := strings.Replace(strings.Replace(f.uri, "file://", "FILE://", 1), "budget.html", "budget%2Ehtml", 1)
+	f.call("coal_read_artifact", map[string]any{"id": f.id, "uri": other}, &out)
 	if out.Text != page2 || out.Version != 1 {
 		t.Errorf("latest: %+v", out)
 	}
