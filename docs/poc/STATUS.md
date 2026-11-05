@@ -47,7 +47,7 @@ Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay o
 | #4 Session matching | Done: marker, contexts, matching, lazy creation, second session attaches | `731d9bf`, `c4b678b`, `f371373` |
 | #5 Artifact identity | Schema, store and the MCP `version` argument done | `ad0e43e`, `da41f14`, `28fb2b4` |
 | #6 rev compare-and-swap | Done: schema, store, API `If-Match` and the MCP conflict | `ad0e43e`, `da41f14`, `1b1b247`, `28fb2b4` |
-| #7 Secrets | Schema rule, deny-list, token scan and `coal purge` done; CLAUDE.md line waits for Dave | `ad0e43e`, `da41f14`, `03eecb4` |
+| #7 Secrets | Schema rule, deny-list, token scan and `coal purge` done; CLAUDE.md line added by the lead | `ad0e43e`, `da41f14`, `03eecb4` |
 | #8 Hooks in other tools | Done | `1d10c78` |
 | #9 Smaller inconsistencies | Done. OpenPortable dropped because it could not be found | `ad0e43e`, `b8a7a95` |
 | #11 Summary filter, rename | Filter, placeholder upgrade and the rename hint with a unique prefix done; `coal rename` done | `219bae6`, `0d69953`, `f371373`, `1c8eafa` |
