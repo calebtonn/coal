@@ -11,6 +11,9 @@ on:
       - "spec/intent-manifest.schema.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
+  # Rebuild once a day so the star count on the GitHub button stays current.
+  schedule:
+    - cron: "17 6 * * *"
 
 permissions:
   contents: read
@@ -29,6 +32,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Read the star count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stars=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}" \
+            | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("stargazers_count", ""))') || stars=""
+          echo "STARS=$stars" >> "$GITHUB_ENV"
       - name: Build
         run: ./site/build.sh _site
       - name: Check the schema is served byte for byte
