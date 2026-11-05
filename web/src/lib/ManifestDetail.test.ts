@@ -45,6 +45,20 @@ describe('ManifestDetail', () => {
     await waitFor(() => expect(screen.getByTestId('artifact-text')).toHaveTextContent('body of bbbb'));
   });
 
+  it('says when the selected version body was skipped', async () => {
+    const [html, code] = exporter.artifacts;
+    const versions = [{ ...code.versions![0], skipped: 'matched a token pattern' }, code.versions![1]];
+    const manifest = { ...exporter, artifacts: [html, { ...code, versions }] };
+    vi.stubGlobal('fetch', vi.fn(fakeDaemon()));
+    const user = userEvent.setup();
+    render(ManifestDetail, { manifest });
+    await user.click(screen.getByRole('tab', { name: 'export.js' }));
+    expect(await screen.findByTestId('artifact-text')).toHaveTextContent('body of cccc');
+    await user.selectOptions(screen.getByLabelText('Version'), '0');
+    expect(screen.getByTestId('artifact-skipped')).toHaveTextContent('The body was not stored: matched a token pattern');
+    expect(screen.queryByTestId('artifact-text')).toBeNull();
+  });
+
   it('shows valid or invalid against the schema', () => {
     const { unmount } = render(ManifestDetail, { manifest: budget, validity: validate(budget) });
     expect(screen.getByText('valid')).toBeInTheDocument();

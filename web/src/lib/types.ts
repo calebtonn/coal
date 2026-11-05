@@ -15,7 +15,13 @@ export interface SearchResult {
 }
 
 export interface Provenance { tool: string; model?: string; sessionRef?: string; capturedBy?: string }
-export interface ArtifactVersion { hash: string; size?: number; createdAt: string; producer?: Provenance }
+export interface ArtifactVersion {
+  hash: string;
+  size?: number;
+  createdAt: string;
+  producer?: Provenance;
+  skipped?: string;
+}
 
 export interface Artifact {
   hash: string;

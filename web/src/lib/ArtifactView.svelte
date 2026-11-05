@@ -20,13 +20,14 @@
   const meta = $derived(
     [artifact.type, artifact.mime, version.size === undefined ? '' : formatSize(version.size)].filter(Boolean).join(', '),
   );
+  const skipped = $derived(version.skipped ?? artifact.skipped);
   const isText = $derived(['code', 'doc', 'data'].includes(artifact.type));
 
   let text = $state<string | null>(null);
   let textError = $state<string | null>(null);
 
   $effect(() => {
-    if (!isText || artifact.skipped) return;
+    if (!isText || skipped) return;
     const hash = version.hash;
     let stale = false;
     text = null;
@@ -57,8 +58,8 @@
     {/if}
   </div>
 
-  {#if artifact.skipped}
-    <p class="text-sm">The body was not stored: {artifact.skipped}</p>
+  {#if skipped}
+    <p class="text-sm" data-testid="artifact-skipped">The body was not stored: {skipped}</p>
   {:else if artifact.type === 'html'}
     <iframe
       sandbox=""
