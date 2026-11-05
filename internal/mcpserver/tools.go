@@ -374,15 +374,6 @@ type UpdateInput struct {
 	Rev           *int     `json:"rev,omitempty" jsonschema:"the rev you read with coal_get; the update fails if the manifest changed since"`
 }
 
-// stateChanged is the daemon's rule (daemon.StateChanged), mirrored so
-// this package does not import the daemon: nextStep, summary or
-// openQuestions differ, with nil and [] equal. lastActivityAt and Extra
-// are ignored.
-func stateChanged(before, after manifest.State) bool {
-	return before.NextStep != after.NextStep || before.Summary != after.Summary ||
-		!slices.Equal(before.OpenQuestions, after.OpenQuestions)
-}
-
 // stampTool names the writer in the state stamp: the client name, or
 // coal-mcp when the client sent none.
 func stampTool(req *mcp.CallToolRequest) string {
@@ -435,7 +426,7 @@ func (s *server) updateState(_ context.Context, req *mcp.CallToolRequest, in Upd
 		// The same rule as PATCH: only a real change counts. Capture
 		// reads the stamp to skip its session-end fallback, so a no-op
 		// call must not leave one.
-		changed := stateChanged(state, m.State)
+		changed := manifest.StateChanged(state, m.State)
 		if !changed && status == m.Status && goal == m.Intent.Goal {
 			return store.ErrNoChange
 		}

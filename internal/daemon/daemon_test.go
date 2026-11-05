@@ -455,20 +455,6 @@ func TestPatchActivityAndStamp(t *testing.T) {
 	}
 }
 
-func TestStateChanged(t *testing.T) {
-	base := manifest.State{LastActivityAt: "2020-01-01T00:00:00Z", NextStep: "x"}
-	same := base
-	same.OpenQuestions, same.LastActivityAt = []string{}, "2026-01-01T00:00:00Z"
-	if StateChanged(base, same) {
-		t.Error("an empty openQuestions or a new lastActivityAt counted as a change")
-	}
-	diff := base
-	diff.OpenQuestions = []string{"q"}
-	if !StateChanged(base, diff) {
-		t.Error("a new open question did not count as a change")
-	}
-}
-
 // Fable review U8: a Host with no port means port 80.
 func TestAllowedHostDefaultPort(t *testing.T) {
 	check := func(host string, local net.Addr) bool {
