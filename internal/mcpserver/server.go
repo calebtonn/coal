@@ -9,13 +9,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/calebtonn/coal/internal/app"
 	"github.com/calebtonn/coal/internal/index"
 	"github.com/calebtonn/coal/internal/manifest"
+	"github.com/calebtonn/coal/internal/metrics"
 )
 
 // Version is the server version reported in initialize.
@@ -31,10 +31,8 @@ const instructions = "COAL is the user's record of work across AI tools: what th
 	"coal_update_state with the next step so the next session can pick it up."
 
 type server struct {
-	app     *app.App
-	logs    string
-	log     *slog.Logger
-	metrics sync.Mutex
+	app *app.App
+	log *slog.Logger
 }
 
 // New builds the MCP server. Logs go to logs/mcp.log in the data dir; the
@@ -48,7 +46,7 @@ func New(a *app.App) (*mcp.Server, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	s := &server{app: a, logs: logs, log: slog.New(slog.NewTextHandler(f, nil))}
+	s := &server{app: a, log: slog.New(slog.NewTextHandler(f, nil))}
 	srv := mcp.NewServer(&mcp.Implementation{Name: "coal", Version: Version}, &mcp.ServerOptions{
 		Instructions: instructions,
 		Logger:       s.log,
@@ -101,20 +99,9 @@ func clientName(req *mcp.CallToolRequest) string {
 	return "mcp"
 }
 
-// count appends one line to logs/metrics.jsonl (#12). It never leaves the
-// machine. Failures are logged and ignored.
-func (s *server) count(event, tool string) {
-	line, _ := json.Marshal(map[string]string{"at": manifest.Now(), "event": event, "tool": tool})
-	s.metrics.Lock()
-	defer s.metrics.Unlock()
-	f, err := os.OpenFile(filepath.Join(s.logs, "metrics.jsonl"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-	if err == nil {
-		_, err = f.Write(append(line, '\n'))
-		f.Close()
-	}
-	if err != nil {
-		s.log.Warn("metrics", "err", err)
-	}
+// count records one coal_find call by client name (#12).
+func (s *server) count(tool string) {
+	metrics.Record(s.app.Store.Dir(), metrics.Find, map[string]any{"tool": tool})
 }
 
 // fail logs a tool error and returns it for the SDK to wrap as isError.

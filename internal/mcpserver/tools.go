@@ -84,7 +84,7 @@ type FindOutput struct {
 var stripB = strings.NewReplacer("<b>", "", "</b>", "")
 
 func (s *server) find(_ context.Context, req *mcp.CallToolRequest, in FindInput) (*mcp.CallToolResult, FindOutput, error) {
-	s.count("coal_find", clientName(req))
+	s.count(clientName(req))
 	out := FindOutput{Results: []FindResult{}}
 	if in.Status != "" && !slices.Contains(statuses, in.Status) {
 		return nil, out, s.fail("coal_find", fmt.Errorf("status must be one of %s", strings.Join(statuses, ", ")))
