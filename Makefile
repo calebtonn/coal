@@ -6,7 +6,7 @@ BIN := $(SANDBOX)/bin/coal
 # Go walks into web/node_modules, which can hold stray Go packages.
 PKGS = $(shell $(GO) list ./... | grep -v /node_modules/)
 
-.PHONY: build test vet fmt web dev demo-init
+.PHONY: build test vet fmt web dev e2e demo-init
 
 build:
 	$(GO) build -o $(BIN) ./cmd/coal
@@ -26,6 +26,11 @@ web:
 dev:
 	$(MAKE) web build
 	COAL_HOME=$(SANDBOX)/coal $(BIN) serve
+
+# Builds the UI and the binary, then drives the embedded UI in headless Chromium.
+e2e:
+	$(MAKE) web build
+	cd web && bun run e2e
 
 demo-init: build
 	COAL_HOME=$(SANDBOX)/coal $(BIN) init

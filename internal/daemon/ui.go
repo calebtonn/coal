@@ -40,6 +40,10 @@ func newUI(files fs.FS) *ui {
 
 // indexCSP is the policy for index.html. Inline scripts, such as the
 // theme init script the framework injects, are allowed by hash only.
+// font-src allows data: because Vite inlines small font subsets from the
+// framework's CSS as data: URLs; without it Chromium blocks them (seen in
+// web/e2e). A data: font cannot run code. style-src stays strict: the
+// bundle sets styles only through the CSSOM, which CSP does not block.
 func indexCSP(html []byte) string {
 	src := []string{"'self'"}
 	for _, m := range inlineScript.FindAllSubmatch(html, -1) {
@@ -50,7 +54,7 @@ func indexCSP(html []byte) string {
 		src = append(src, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'")
 	}
 	return "default-src 'self'; script-src " + strings.Join(src, " ") +
-		"; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'none'"
+		"; style-src 'self'; img-src 'self' data:; font-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'none'"
 }
 
 func (u *ui) ServeHTTP(w http.ResponseWriter, r *http.Request) {

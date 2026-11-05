@@ -295,7 +295,7 @@ func TestUI(t *testing.T) {
 		want(t, res, body, 200)
 		csp := res.Header.Get("Content-Security-Policy")
 		if !strings.Contains(string(body), "data-wf-theme-init") || !strings.Contains(csp, "script-src 'self' "+hash+";") ||
-			!strings.Contains(csp, "object-src 'none'") || res.Header.Get("X-Frame-Options") != "SAMEORIGIN" ||
+			!strings.Contains(csp, "object-src 'none'") || !strings.Contains(csp, "font-src 'self' data:;") || res.Header.Get("X-Frame-Options") != "SAMEORIGIN" ||
 			res.Header.Get("Referrer-Policy") != "no-referrer" || res.Header.Get("X-Content-Type-Options") != "nosniff" {
 			t.Fatalf("%s: csp %q body %s", p, csp, body)
 		}
