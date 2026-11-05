@@ -14,11 +14,11 @@ import (
 
 // setup builds a projects dir from the fixtures with /PROJECT replaced by
 // a temp dir holding real projects: budget (a git repo with index.html),
-// notes, and no deleted-project.
+// notes, layout, and no deleted-project.
 func setup(t *testing.T) (root, projects string, a *app.App) {
 	t.Helper()
 	root = t.TempDir()
-	for _, d := range []string{"budget/.git", "budget/src", "notes", "projects", "elsewhere/-x"} {
+	for _, d := range []string{"budget/.git", "budget/src", "notes", "layout", "projects", "elsewhere/-x"} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -30,7 +30,7 @@ func setup(t *testing.T) (root, projects string, a *app.App) {
 	}
 	write("budget/index.html", "<h1>Budget</h1>")
 	write("outside.txt", "not in a project")
-	fixtures := map[string]string{"budget-1.jsonl": "-p-budget", "budget-2.jsonl": "-p-budget-src", "notes-1.jsonl": "-p-notes", "gone-1.jsonl": "-p-gone"}
+	fixtures := map[string]string{"budget-1.jsonl": "-p-budget", "budget-2.jsonl": "-p-budget-src", "notes-1.jsonl": "-p-notes", "gone-1.jsonl": "-p-gone", "layout-1.jsonl": "-p-layout"}
 	for f, enc := range fixtures {
 		b, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "claude-code", "transcripts", f))
 		if err != nil {
@@ -70,7 +70,7 @@ func TestProposeGroupsAndWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Proposals) != 3 || plan.Files != 5 || plan.SkippedFiles != 1 || plan.SkippedLines != 2 {
+	if len(plan.Proposals) != 4 || plan.Files != 6 || plan.SkippedFiles != 1 || plan.SkippedLines != 2 {
 		t.Fatalf("plan: %d proposals, files %d, skipped files %d, lines %d", len(plan.Proposals), plan.Files, plan.SkippedFiles, plan.SkippedLines)
 	}
 	b := byRoot(t, plan, filepath.Join(root, "budget"))
@@ -89,6 +89,11 @@ func TestProposeGroupsAndWritesNothing(t *testing.T) {
 	n := byRoot(t, plan, filepath.Join(root, "notes"))
 	if n.Summary != "Work in notes" || n.Source != "model" {
 		t.Errorf("notes summary %q (%s)", n.Summary, n.Source)
+	}
+	// A known wrapper tag is dropped; a prompt that merely starts with
+	// "<" is the user's.
+	if l := byRoot(t, plan, filepath.Join(root, "layout")); l.Summary != "<div> is off centre, fix it" || l.Source != "user" {
+		t.Errorf("layout summary %q (%s)", l.Summary, l.Source)
 	}
 	g := byRoot(t, plan, filepath.Join(root, "deleted-project"))
 	if g.Exists || g.Source != "user" || len(g.Artifacts) != 0 {

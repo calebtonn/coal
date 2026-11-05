@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/calebtonn/coal/internal/capture"
 )
 
 // Importer names the transcript format this reader understands.
@@ -185,9 +187,10 @@ func (s *Session) add(raw []byte, seen map[string]bool, lastMsg *string) bool {
 	}
 	text := strings.Join(texts, "\n\n")
 	switch {
-	case l.Type == "user" && text != "" && !strings.HasPrefix(strings.TrimSpace(text), "<"):
-		// Lines starting with a tag are injected by Claude Code
-		// (command output, reminders), not typed by the user.
+	case l.Type == "user" && text != "" && !capture.IsWrapper(text):
+		// Known wrapper tags are injected by Claude Code (command
+		// output, reminders), not typed by the user. Live capture
+		// drops the same ones.
 		s.Prompts = append(s.Prompts, text)
 	case l.Type == "assistant":
 		if m.Model != "" {
