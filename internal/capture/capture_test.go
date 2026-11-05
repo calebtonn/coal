@@ -93,6 +93,8 @@ func TestPickSummary(t *testing.T) {
 		"Why does this fail?\n<pasted_content id=\"1\">\nTraceback (most recent call last)\n  File \"a.py\", line 1\n</pasted_content id=\"1\">\nPlease explain the cause": "Why does this fail?",
 		"Hi\nplease add a dark mode toggle": "please add a dark mode toggle",
 	}
+	accept["<div> is off centre, fix it please"] = "<div> is off centre, fix it please"
+	accept["<button> should be blue on the budget page"] = "<button> should be blue on the budget page"
 	for in, want := range accept {
 		got, ok := PickSummary(in)
 		if !ok || got != want {
@@ -104,6 +106,9 @@ func TestPickSummary(t *testing.T) {
 		"do it", "yes please go ahead and continue", "fix the bug", "Next.",
 		"<cross-session-message from=\"x\">please build the budget page now</cross-session-message>",
 		"  <task-notification>the build finished with three warnings</task-notification>",
+		"<system-reminder>the date changed to tomorrow morning</system-reminder>",
+		"<bash-stdout>total 0 and nothing else here</bash-stdout>",
+		"<command-name>/clear</command-name> plus some more words",
 		"Hi there\n<pasted_content id=\"2\">\nlots of pasted words here\n</pasted_content id=\"2\">",
 		"TypeError: x is not a function\n    at foo (a.js:1:2)\n    at bar (a.js:3:4)\nwhat is this",
 		"func main() {\n\tfmt.Println(1)\n}\nwhy no output here",
@@ -197,5 +202,21 @@ func TestResumeOutput(t *testing.T) {
 	ctx = out.HookSpecificOutput.AdditionalContext
 	if n := len([]rune(ctx)); n >= MaxContext || !strings.Contains(ctx, "more") || !strings.Contains(ctx, "coal_update_state") {
 		t.Errorf("big context: %d chars", n)
+	}
+}
+
+func TestIsWrapper(t *testing.T) {
+	for in, want := range map[string]bool{
+		"<task-notification>x":               true,
+		"  <system-reminder>\nx":             true,
+		"<command-args></command-args>":      true,
+		"<cross-session-message from=\"a\">": true,
+		"<div> is off centre":                false,
+		"<task-notifications> plural":        false,
+		"plain words":                        false,
+	} {
+		if got := IsWrapper(in); got != want {
+			t.Errorf("IsWrapper(%q) = %v", in, got)
+		}
 	}
 }

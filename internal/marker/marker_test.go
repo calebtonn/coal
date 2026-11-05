@@ -313,3 +313,29 @@ func TestWorktreeExclude(t *testing.T) {
 		t.Error("wrote info/ in the worktree gitdir")
 	}
 }
+
+func TestDotfilesHomeRepo(t *testing.T) {
+	sandbox(t)
+	home := os.Getenv("HOME")
+	fakeRepo(t, home, "git@github.com:dave/dotfiles.git")
+	plain := mkdir(t, home, "plain")
+	sub := mkdir(t, plain, "src")
+	if got := ProjectRoot(plain); got != plain {
+		t.Errorf("root = %q, want %q", got, plain)
+	}
+	if got := ProjectRoot(sub); got != sub {
+		t.Errorf("sub root = %q", got)
+	}
+	if got := ProjectRoot(home); got != home || !Unanchored(got) {
+		t.Errorf("home root = %q", got)
+	}
+	if ctx := Contexts(plain); len(ctx) != 1 || ctx[0].Kind != KindPath || ctx[0].Key != plain {
+		t.Errorf("contexts = %+v", ctx)
+	}
+	// A real repo under home is still its own root.
+	proj := mkdir(t, home, "proj")
+	fakeRepo(t, proj, "")
+	if got := ProjectRoot(mkdir(t, proj, "a")); got != proj {
+		t.Errorf("nested repo root = %q", got)
+	}
+}

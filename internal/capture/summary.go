@@ -33,17 +33,37 @@ func init() {
 	}
 }
 
+// wrapperTags open text that Claude Code or another agent injected into
+// the prompt stream, not words the user typed.
+var wrapperTags = []string{
+	"cross-session-message", "task-notification", "system-reminder",
+	"local-command-stdout", "local-command-caveat", "command-name",
+	"command-message", "command-args", "bash-input", "bash-stdout",
+	"bash-stderr", "user-prompt-submit-hook",
+}
+
+// IsWrapper reports whether text, after leading space, opens with one of
+// the known wrapper tags, such as <task-notification>. Other text that
+// starts with "<", like "<div> is off centre", is the user's.
+func IsWrapper(text string) bool {
+	t := strings.TrimSpace(text)
+	for _, tag := range wrapperTags {
+		if rest, ok := strings.CutPrefix(t, "<"+tag); ok && (rest == "" || strings.ContainsRune("> /\t\n", rune(rest[0]))) {
+			return true
+		}
+	}
+	return false
+}
+
 // PickSummary applies the summary filter (#11) to a user prompt. After
-// pasted blocks are removed it rejects slash commands, text starting
-// with a "<" wrapper tag, prompts under four words, stop-list replies
+// pasted blocks are removed it rejects slash commands, text opening
+// with a known wrapper tag (IsWrapper), prompts under four words, stop-list replies
 // and text that is mostly code or a stack trace. On accept it returns
 // the first plain line, whitespace collapsed, cut to 200 characters on a
 // word boundary.
 func PickSummary(prompt string) (string, bool) {
 	text := strings.TrimSpace(pastedBlock.ReplaceAllString(prompt, ""))
-	// "/" is a slash command; "<" is a wrapper tag such as a
-	// cross-session message or a task notification, not the user's words.
-	if text == "" || strings.HasPrefix(text, "/") || strings.HasPrefix(text, "<") {
+	if text == "" || strings.HasPrefix(text, "/") || IsWrapper(text) {
 		return "", false
 	}
 	if isStopPhrase(text) {

@@ -77,6 +77,12 @@ func Apply(a *app.App, e *capture.Event) error {
 	}
 	switch e.Kind {
 	case capture.KindSessionStart:
+		// A resumed or forked session starts a new stretch of work, so a
+		// state stamp written by another session before now must not
+		// suppress this one's extraction at its end.
+		if e.Source == "resume" || e.Source == "fork" {
+			s.StartedAt, s.EndedAt, s.RecordedByModel = e.At, "", false
+		}
 		if s.ManifestID == "" {
 			if m := match(a, s.Cwd); m != nil {
 				s.attach(m)

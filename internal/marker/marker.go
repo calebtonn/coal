@@ -48,11 +48,16 @@ func resolve(p string) string {
 
 // ProjectRoot returns the git top level at or above cwd, found by
 // walking up to a .git file or directory, or the resolved cwd when
-// there is no repo.
+// there is no repo. A repo whose top level is unanchored, such as a
+// dotfiles repo at $HOME, is treated as no repo: the root is the
+// resolved cwd when that is anchored itself.
 func ProjectRoot(cwd string) string {
 	start := resolve(cwd)
 	for dir := start; ; dir = filepath.Dir(dir) {
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			if Unanchored(dir) && !Unanchored(start) {
+				return start
+			}
 			return dir
 		}
 		if dir == filepath.Dir(dir) {

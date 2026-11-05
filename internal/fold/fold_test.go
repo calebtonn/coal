@@ -325,3 +325,57 @@ func TestPlaceholderUpgradedByAnySession(t *testing.T) {
 		t.Errorf("not upgraded: %+v", m.Intent)
 	}
 }
+
+func TestDotfilesHomeStillCaptures(t *testing.T) {
+	v := setup(t)
+	home := os.Getenv("HOME")
+	os.MkdirAll(filepath.Join(home, ".git"), 0o755)
+	plain := filepath.Join(home, "plain")
+	os.MkdirAll(plain, 0o755)
+	os.WriteFile(filepath.Join(plain, "page.html"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(home, "notes.md"), []byte("x"), 0o644)
+	// A session in ~ itself captures nothing.
+	v.send("session-start.json", "SessionStart", func(e *capture.Event) { e.Cwd = home })
+	v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) { e.Cwd, e.Path = home, filepath.Join(home, "notes.md") })
+	if ms := v.all(); len(ms) != 0 {
+		t.Fatalf("captured in ~: %d", len(ms))
+	}
+	// A session in ~/plain, with no repo of its own, is rooted there.
+	v.send("session-start-resume.json", "SessionStart", func(e *capture.Event) { e.Cwd = plain })
+	v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) {
+		asB(e)
+		e.Cwd, e.Path = plain, filepath.Join(plain, "page.html")
+	})
+	ms := v.all()
+	if len(ms) != 1 || len(ms[0].Contexts) != 1 || ms[0].Contexts[0].Key != plain {
+		t.Fatalf("~/plain: %+v", ms)
+	}
+	if _, err := os.Stat(filepath.Join(plain, ".coal")); err != nil {
+		t.Error("no marker in ~/plain")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".coal")); err == nil {
+		t.Error("wrote ~/.coal")
+	}
+}
+
+func TestResumeRefreshesStart(t *testing.T) {
+	v := setup(t)
+	v.write("budget.html", "x")
+	v.send("session-start.json", "SessionStart", nil)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", nil)
+	v.send("post-tool-use-write.json", "PostToolUse", nil)
+	id := v.all()[0].ID
+	// Another session records state on purpose while this one is away.
+	v.a.Update(id, 0, func(m *manifest.Manifest) error {
+		m.State.NextStep = "Add charts"
+		manifest.StampState(m, "coal-mcp")
+		return nil
+	}, op("test"))
+	later := time.Now().Add(5 * time.Second).UTC().Format(time.RFC3339)
+	v.send("session-start.json", "SessionStart", func(e *capture.Event) { e.Source, e.At = "resume", later })
+	v.send("stop.json", "Stop", nil)
+	v.send("session-end.json", "SessionEnd", nil)
+	if m, _ := v.a.Get(id); m.State.NextStep != "add CSV export" {
+		t.Errorf("resumed session's extraction was suppressed: %+v", m.State)
+	}
+}
