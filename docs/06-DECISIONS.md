@@ -81,3 +81,55 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 **Decision.** coalmine.io is the standard: the published schema (`/schema/intent-manifest/<version>.json`), the spec, the docs and the project site. coalmine.app is reserved for anything that runs: the hosted MCP endpoint, sync, or an API, if and when any of those exist. Package names, the CLI and the data directory stay `coal`.
 
 **Consequences.** The schema `$id` is `https://coalmine.io/schema/intent-manifest/0.1.json` and must be served at that path once the site is up (Phase 1 task). In Phase 1 nothing runs on coalmine.app; it redirects to coalmine.io. Registering the domain is not a reason to host anything before the Phase 1 retro.
+
+## ADR-011: One capture contract, adapters for every coding agent with hooks
+
+**Status.** Proposed. Amends ADR-003.
+
+**Context.** ADR-003 chose Claude Code because it was the only mainstream tool with lifecycle hooks. That is no longer true (#8): Cursor, Codex CLI and Gemini CLI all have session, tool and stop or end events, and all pass JSON on stdin. If the Claude Code adapter is written as a special case, each later tool means rework, and Phase 2's "Reach" stays expensive for no reason.
+
+**Decision.** Phase 1 defines a small internal capture contract that adapters translate into: `sessionStart {tool, cwd, sessionRef}`, `fileWritten {path}`, `turnEnd`, `sessionEnd {transcriptPath?}`. The Claude Code adapter is its first implementation. The MVP still ships Claude Code only. Cursor and Codex adapters are the first Phase 2 items. Phase 2's hard problem is restated as chat apps (claude.ai, chatgpt.com), which have no hooks.
+
+**Consequences.** A little extra work in T08 to keep the contract separate from Claude Code's payload shapes. Phase 2's "done when" (a manifest written by something other than Claude Code, resumed from a third tool) becomes reachable with two small adapters. ADR-003's MVP scope stands; only its reasoning changes.
+
+## ADR-012: Import from session records already on disk
+
+**Status.** Proposed.
+
+**Context.** The case that started COAL is a page buried in a claude.ai chat, and the MVP only serves it through a manual `coal add`. Browser capture is the planned fix, and ADR-003 already notes it is fragile. Meanwhile every coding agent writes its sessions to disk (Claude Code under `~/.claude/projects/`, Codex under `~/.codex/sessions/`), and claude.ai and ChatGPT both offer account data exports. Live capture also starts from an empty record, so the week six retro measures a record with only six weeks in it.
+
+**Decision.** Add `coal import`. It reads these sources, proposes manifests (grouped by working directory for coding agents, by conversation for chat exports), and shows them for the user to accept, merge or discard before anything is written. Artifacts in chat exports (code blocks, HTML) are registered as artifacts. Grouping chat conversations into intents uses a model only when the user has configured one, which keeps the no-network rule. Import is the first Phase 2 item, or goes into Phase 1 week 5 if hardening finishes early.
+
+**Consequences.** The browser extension moves later and may not be needed. Transcript formats are undocumented and change, so each importer is versioned and skips what it cannot parse. Import is batch, so chat-side state lags until the next run. The record has history on day one, which makes the retro a fairer test.
+
+## ADR-013: The project directory anchors the intent
+
+**Status.** Proposed.
+
+**Context.** Sessions are not intents. One session can touch several intents, and one intent runs across many sessions and tools. Matching sessions to manifests is the hardest part of capture, and the current spec leaves it open (#4). For coding work there is already a boundary the user chose: the project directory. F5 mentions a `.coal` marker file but nothing defines it.
+
+**Decision.** On the first capture in a directory, COAL writes a `.coal` file at the git top level (or cwd when there is no repo) holding `{"$schema": "...", "manifest": "<id>"}` and nothing else. Every later session from any tool in that directory or below attaches to that manifest. The manifest itself stays in `~/.coal/manifests/`, so there is still one source of truth (ADR-001). By default the marker is listed in `.git/info/exclude`; the user can choose to commit it. `coal new` in a directory with a marker creates a second manifest and makes it the active one; the marker then holds `active` plus a list. Optionally, `coal adapter install` adds one line to the project's `AGENTS.md` or `CLAUDE.md` telling agents to call `coal_get` with the id in `.coal` at the start of work, so agents with no COAL adapter can still resume.
+
+**Consequences.** Identity for coding work is deterministic and needs no model. Chat work has no directory and still relies on grouping (ADR-012). COAL writes a file into user projects, which some people will not want, so `markers: "project" | "none"` is a setting, with `none` falling back to `contexts[]` path matching.
+
+## ADR-014: Keep history of manifest changes
+
+**Status.** Proposed.
+
+**Context.** Manifests are mutable. `nextStep`, `status` and `openQuestions` are overwritten in place, so there is no way to answer "what was next last week", to see when an intent was abandoned, or to recover from a bad write by a model.
+
+**Decision.** `~/.coal/` is a local git repository with no remote by default. The store commits after each write, holding the per-manifest lock from #6, with a message naming the tool and operation. `artifacts/` is excluded, since it is already content-addressed and append-only, and `index.db` is excluded because it is derived. `coal log <id>` shows a manifest's history. `reindex` still reads `manifests/` only.
+
+Considered: an append-only event log per manifest with the manifest as a projection. More precise, but a second format for readers and implementers to understand. Not keeping history: the current spec.
+
+**Consequences.** Git (or `isomorphic-git`) becomes a dependency. History comes with ordinary tools: `git log`, `git diff`, `git revert`. Phase 4 sync can start from syncing a git repository. Lost updates are still handled by #6; history only makes them visible.
+
+## ADR-015: Use Agent Trace for line-level code provenance
+
+**Status.** Proposed.
+
+**Context.** Each artifact carries a `producer` (tool, model, session). Agent Trace, published by Cursor in January 2026 under CC BY 4.0 and supported by Cognition, OpenCode and others, is an open, storage-agnostic spec that links code ranges to the conversations and contributors behind them. The README says the schema is the product. A second provenance format next to an emerging standard would compete with it rather than build on it.
+
+**Decision.** `producer` stays minimal: tool, model, sessionRef. COAL does not add line-level attribution to the manifest. When an Agent Trace record exists for a code artifact, or an adapter can produce one, the artifact references it under `ext["dev.agent-trace"]` with the record's URI or hash. COAL owns intent and state; Agent Trace owns which lines came from where.
+
+**Consequences.** Code provenance from COAL can be read by tools that adopt Agent Trace, at the cost of one extension key. Agent Trace is still a draft, so the reference stays under `ext` until v1.0 of both specs, when it can be reconsidered as a first-class field. Reference: https://agent-trace.dev/
