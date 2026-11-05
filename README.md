@@ -19,14 +19,14 @@ It runs on your machine. The record is a folder of JSON files you can read with 
 
 ## Status
 
-Pre-alpha. Nothing runs yet. This repo is the spec, the decisions behind it, and the build plan. The most useful help right now is a careful read of the spec: if something is wrong, unclear or contradicts itself, open an issue. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is wanted and how. The build plan is in `docs/05-MVP-TASKS.md`.
+Nothing is built yet. This repo is the spec, the decisions behind it, and the task list (`docs/05-MVP-TASKS.md`). If you want to follow along or help, read the spec and open an issue where it is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
 
 ## Layout
 
 ```
 coal/
   CLAUDE.md                     Instructions for Claude Code
-  CONTRIBUTING.md               What help is useful now, and how
+  CONTRIBUTING.md               How to help now
   assets/                       Icon: icon.png plus 16 to 512 px sizes
   docs/
     01-THESIS.md                Why this exists, one page

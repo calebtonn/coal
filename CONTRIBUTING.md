@@ -1,35 +1,35 @@
 # Contributing to COAL
 
-Thanks for looking. COAL is early, so this page is mostly about what kind of help is useful right now.
+Thanks for looking. Nothing in COAL runs yet, so the help I can use now is mostly about the spec, not code.
 
 ## Where the project is
 
-COAL is pre-alpha. The repo holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). The maintainer builds the MVP in that order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, the project continues to Phase 2, changes direction, or stops. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
+COAL is pre-alpha. The repo holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). I build the MVP in that order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, I continue to Phase 2, change direction, or stop. The bar is in the README: if I have not reached for COAL unprompted at least five times that week, I stop. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
 
 ## What helps now
 
-- **Spec review.** Read `docs/02-SPEC.md`, `docs/04-INTENT-MANIFEST.md` and `docs/06-DECISIONS.md` and open an issue for anything that is wrong, unclear, or contradicts another doc. The most useful issues have three parts: **Where** (file and section), **Problem**, and **Suggested fix**. Issues #1 to #9 are good examples.
-- **Proposed decisions.** If you think the design should change, open a pull request that adds an ADR to `docs/06-DECISIONS.md` with status **Proposed**. Say what problem it solves and what you considered instead. PR #10 is an example.
-- **The Intent Manifest format.** If you would write manifests from another tool, say so in an issue. A second writer is what the format needs most.
+- Read `docs/02-SPEC.md`, `docs/04-INTENT-MANIFEST.md` and `docs/06-DECISIONS.md`, and open an issue for anything that is wrong, unclear, or contradicts another doc. Say where (file and section), what the problem is, and what you would change. Issues #1 to #9 are good examples.
+- If you think the design should change, open a pull request that adds an ADR to `docs/06-DECISIONS.md` with status Proposed. Say what problem it solves and what you considered instead. PR #10 is an example.
+- If you would write manifests from another tool, say so in an issue before you build anything. A second writer is what the format needs most.
 
 ## What does not help yet
 
 - Pull requests that build MVP tasks out of order, or that nobody asked for. Ask in an issue first.
-- Features from Phases 2 to 4 (browser capture, semantic search, sync, teams). They are planned after the decision gate.
+- Code for Phases 2 to 4 (session import, adapters for other tools, browser capture, semantic search, sync, teams). It starts after the decision gate.
 - Changes to the fixed stack in `CLAUDE.md`, or splitting the two packages further.
 
 ## House rules
 
 - Prose in docs and UI copy is plain and direct, with no em-dashes.
-- COAL is a record of work, not a memory. Do not describe it as memory in UI copy or tool descriptions (ADR-008).
+- COAL is a record of work. Do not call it memory in UI copy, tool descriptions or docs (ADR-008). `docs/01-THESIS.md` is the one exception: it uses the word to place COAL among memory systems.
 - `spec/intent-manifest.schema.json` is generated from the Zod schema once that exists (T02). Change the Zod source, not the JSON.
 - Never delete user data, never bind to anything but `127.0.0.1`, and never add telemetry or network calls the user did not configure.
 
 ## Using AI tools
 
-This project is built with Claude Code, under the maintainer's direction and review. AI-assisted issues and pull requests are welcome when a person has read and checked them. Say that a tool was used; a footer line is enough. Large batches of unchecked generated changes will be closed.
+I build COAL with Claude Code; I direct the work and review what it produces. Issues and pull requests written with AI tools are fine if you have read and checked them yourself. Say a tool was used; a footer line is enough. I will close large batches of unchecked generated changes.
 
-If your agent reads `CLAUDE.md`, note the section for outside contributors at the top: work only on the issue you were asked to take.
+`CLAUDE.md` tells agents to work only on the issue you point them at.
 
 ## License of contributions
 
