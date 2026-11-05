@@ -288,3 +288,60 @@ func TestFindMetrics(t *testing.T) {
 		t.Errorf("got %d lines, want 3", n)
 	}
 }
+
+func TestUpdateStateOnlyRealChanges(t *testing.T) {
+	f := setup(t)
+	var got manifest.Manifest
+	f.call("coal_update_state", map[string]any{"id": f.id, "nextStep": "Add CSV export"}, &got)
+	first, _ := manifest.StateStampOf(&got)
+	rev := got.Rev
+	path := filepath.Join(f.app.Store.Dir(), "manifests", f.id+".json")
+	before, _ := os.ReadFile(path)
+
+	// The same nextStep again, and an empty list where there is none:
+	// nothing changes, so nothing is written.
+	for _, args := range []map[string]any{
+		{"id": f.id, "nextStep": "Add CSV export"},
+		{"id": f.id, "nextStep": " Add CSV export ", "openQuestions": []string{}},
+	} {
+		res := f.call("coal_update_state", args, &got)
+		if res.IsError || got.Rev != rev || got.State.NextStep != "Add CSV export" {
+			t.Fatalf("no-op %v: rev %d %s", args, got.Rev, resText(res))
+		}
+		if after, _ := os.ReadFile(path); string(after) != string(before) {
+			t.Errorf("no-op %v rewrote the file", args)
+		}
+		if st, _ := manifest.StateStampOf(&got); st != first {
+			t.Errorf("no-op restamped: %+v", st)
+		}
+	}
+
+	// A goal-only change writes, but neither bumps activity nor stamps.
+	var rec RecordOutput
+	f.call("coal_record_intent", map[string]any{"summary": "a second piece of work"}, &rec)
+	m, _ := f.app.Update(rec.ID, 0, func(m *manifest.Manifest) error {
+		m.State.LastActivityAt = "2026-01-01T00:00:00Z" // so a bump would show
+		return nil
+	}, store.Op{Tool: "test"})
+	f.call("coal_update_state", map[string]any{"id": rec.ID, "goal": "Done when it ships"}, &got)
+	if got.Rev != m.Rev+1 || got.Intent.Goal != "Done when it ships" || got.State.LastActivityAt != m.State.LastActivityAt {
+		t.Errorf("goal-only: rev %d->%d, activity %s->%s", m.Rev, got.Rev, m.State.LastActivityAt, got.State.LastActivityAt)
+	}
+	if _, ok := manifest.StateStampOf(&got); ok {
+		t.Error("goal-only update stamped state")
+	}
+}
+
+func TestReadSkippedArtifact(t *testing.T) {
+	f := setup(t)
+	var reg RegisterOutput
+	f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "content": "TOKEN=x", "uri": "file:///p/.env"}, &reg)
+	if reg.Artifact.Skipped == "" {
+		t.Fatalf("expected a skipped artifact: %+v", reg.Artifact)
+	}
+	var out ReadOutput
+	res := f.call("coal_read_artifact", map[string]any{"id": f.id, "artifactIndex": reg.ArtifactIndex}, &out)
+	if txt := resText(res); res.IsError || out.Text != "" || !strings.Contains(txt, "size not recorded") || strings.Contains(txt, "0 bytes") {
+		t.Errorf("skipped read: %s", txt)
+	}
+}

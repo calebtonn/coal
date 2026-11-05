@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -209,7 +210,11 @@ func (s *server) readArtifact(_ context.Context, _ *mcp.CallToolRequest, in Read
 	if v.Size != nil {
 		out.Size = *v.Size
 	}
-	head := fmt.Sprintf("%s (%s, %d bytes, version %d of %d, %s)", a.Title, a.MIME, out.Size, vi+1, len(versions), v.Hash)
+	size := fmt.Sprintf("%d bytes", out.Size)
+	if v.Skipped != "" || v.Size == nil {
+		size = "size not recorded"
+	}
+	head := fmt.Sprintf("%s (%s, %s, version %d of %d, %s)", a.Title, a.MIME, size, vi+1, len(versions), v.Hash)
 	if v.Skipped != "" {
 		return text("%s\nThe content was not stored: %s.", head, v.Skipped), out, nil
 	}
@@ -370,6 +375,17 @@ type UpdateInput struct {
 	Rev           *int     `json:"rev,omitempty" jsonschema:"the rev you read with coal_get; the update fails if the manifest changed since"`
 }
 
+// normState copies st with an empty openQuestions list as nil, so [] and
+// absent compare equal and are stored the same way.
+func normState(st manifest.State) manifest.State {
+	if len(st.OpenQuestions) == 0 {
+		st.OpenQuestions = nil
+	} else {
+		st.OpenQuestions = slices.Clone(st.OpenQuestions)
+	}
+	return st
+}
+
 // stampTool names the writer in the state stamp: the client name, or
 // coal-mcp when the client sent none.
 func stampTool(req *mcp.CallToolRequest) string {
@@ -398,6 +414,7 @@ func (s *server) updateState(_ context.Context, req *mcp.CallToolRequest, in Upd
 		return fail(err)
 	}
 	m, err := s.app.Update(id, rev, func(m *manifest.Manifest) error {
+		status, goal, state := m.Status, m.Intent.Goal, normState(m.State)
 		if in.NextStep != nil {
 			m.State.NextStep = strings.TrimSpace(*in.NextStep)
 		}
@@ -413,10 +430,20 @@ func (s *server) updateState(_ context.Context, req *mcp.CallToolRequest, in Upd
 		if in.Status != "" {
 			m.Status = in.Status
 		}
-		if in.NextStep != nil || in.OpenQuestions != nil || in.Summary != nil {
+		// The same rule as PATCH: only a real change counts. Capture
+		// reads the stamp to skip its session-end fallback, so a no-op
+		// call must not leave one.
+		m.State = normState(m.State)
+		stateChanged := !reflect.DeepEqual(state, m.State)
+		if !stateChanged && status == m.Status && goal == m.Intent.Goal {
+			return store.ErrNoChange
+		}
+		if stateChanged || status != m.Status {
+			m.State.LastActivityAt = manifest.Now()
+		}
+		if stateChanged {
 			manifest.StampState(m, stampTool(req))
 		}
-		m.State.LastActivityAt = manifest.Now()
 		return nil
 	}, store.Op{Tool: clientName(req), Action: "update state"})
 	var ce *store.ConflictError
