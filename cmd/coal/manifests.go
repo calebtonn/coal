@@ -5,26 +5,30 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/calebtonn/coal/internal/index"
+	"github.com/calebtonn/coal/internal/app"
 	"github.com/calebtonn/coal/internal/manifest"
 	"github.com/calebtonn/coal/internal/store"
 )
 
 var cliProvenance = manifest.Provenance{Tool: "coal-cli", CapturedBy: "coal-cli@" + appVersion}
 
-// openStore opens the data directory and, when arg is set, resolves it as
-// an id or a unique id prefix.
-func openStore(arg string) (*store.Store, string, error) {
+// openApp opens the data directory and, when arg is set, resolves it as
+// an id or a unique id prefix. The caller closes the app.
+func openApp(arg string) (*app.App, string, error) {
 	dir, err := dataHome()
 	if err != nil {
 		return nil, "", err
 	}
-	s, err := store.Open(dir)
+	a, err := app.Open(dir)
 	if err != nil || arg == "" {
-		return s, "", err
+		return a, "", err
 	}
-	id, err := s.Resolve(arg)
-	return s, id, err
+	id, err := a.Resolve(arg)
+	if err != nil {
+		a.Close()
+		return nil, "", err
+	}
+	return a, id, nil
 }
 
 func addCmd() *cobra.Command {
@@ -35,23 +39,23 @@ func addCmd() *cobra.Command {
 		Short: "Record a new Intent Manifest in your own words",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			s, _, err := openStore("")
+			a, _, err := openApp("")
 			if err != nil {
 				return err
 			}
+			defer a.Close()
 			m := manifest.New(intent, manifest.SourceUser, cliProvenance)
 			m.Intent.Goal, m.Intent.Tags, m.Status = goal, tags, status
-			if err := s.Create(m, store.Op{Tool: "coal-cli", Action: "add manifest"}); err != nil {
+			if err := a.Create(m, store.Op{Tool: "coal-cli", Action: "add manifest"}); err != nil {
 				return err
 			}
-			defer indexManifest(cmd, s, m.ID)
 			for _, p := range artifacts {
-				a, err := s.RegisterArtifact(m.ID, store.ArtifactInput{Path: p, Producer: cliProvenance}, store.Op{Tool: "coal-cli"})
+				art, err := a.RegisterArtifact(m.ID, store.ArtifactInput{Path: p, Producer: cliProvenance}, store.Op{Tool: "coal-cli"})
 				if err != nil {
 					return fmt.Errorf("manifest %s created, but registering %s failed: %w", m.ID, p, err)
 				}
-				if a.Skipped != "" {
-					fmt.Fprintf(cmd.ErrOrStderr(), "%s: body not copied (%s)\n", p, a.Skipped)
+				if art.Skipped != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s: body not copied (%s)\n", p, art.Skipped)
 				}
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), m.ID)
@@ -74,11 +78,12 @@ func showCmd() *cobra.Command {
 		Short: "Print a manifest as JSON (a unique id prefix of 8 or more characters works)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, id, err := openStore(args[0])
+			a, id, err := openApp(args[0])
 			if err != nil {
 				return err
 			}
-			m, err := s.Get(id)
+			defer a.Close()
+			m, err := a.Get(id)
 			if err != nil {
 				return err
 			}
@@ -98,15 +103,15 @@ func rmCmd() *cobra.Command {
 		Short: "Move a manifest to the trash (nothing is deleted)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, id, err := openStore(args[0])
+			a, id, err := openApp(args[0])
 			if err != nil {
 				return err
 			}
-			dst, err := s.Remove(id, store.Op{Tool: "coal-cli", Action: "remove manifest"})
+			defer a.Close()
+			dst, err := a.Remove(id, store.Op{Tool: "coal-cli", Action: "remove manifest"})
 			if err != nil {
 				return err
 			}
-			withIndex(cmd, s, func(ix *index.Index) error { return ix.Delete(id) })
 			fmt.Fprintln(cmd.OutOrStdout(), dst)
 			return nil
 		},

@@ -6,7 +6,6 @@ import (
 	"html"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -14,59 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/calebtonn/coal/internal/index"
-	"github.com/calebtonn/coal/internal/store"
 )
-
-// openIndex opens index.db in the store's data directory. An empty index
-// is rebuilt from the store first, so a new or deleted index.db never
-// hides manifests that already exist.
-func openIndex(s *store.Store) (*index.Index, error) {
-	ix, err := index.Open(filepath.Join(s.Dir(), "index.db"))
-	if err != nil {
-		return nil, err
-	}
-	n, err := ix.Count()
-	if err == nil && n == 0 {
-		_, _, err = rebuild(s, ix)
-	}
-	if err != nil {
-		ix.Close()
-		return nil, err
-	}
-	return ix, nil
-}
-
-// withIndex runs fn on the store's index after a store write. The write
-// already succeeded, so a failure here is a warning, not an error: the
-// index is derived and `coal reindex` repairs it.
-func withIndex(cmd *cobra.Command, s *store.Store, fn func(*index.Index) error) {
-	ix, err := openIndex(s)
-	if err == nil {
-		err = fn(ix)
-		ix.Close()
-	}
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: search index not updated (%v); run coal reindex\n", err)
-	}
-}
-
-// indexManifest re-reads id from the store and upserts it.
-func indexManifest(cmd *cobra.Command, s *store.Store, id string) {
-	withIndex(cmd, s, func(ix *index.Index) error {
-		m, err := s.Get(id)
-		if err != nil {
-			return err
-		}
-		return ix.Upsert(m)
-	})
-}
-
-// rebuild indexes every readable manifest and returns how many were
-// indexed and the errors for the ones skipped as corrupt.
-func rebuild(s *store.Store, ix *index.Index) (int, []error, error) {
-	ms, errs := s.List()
-	return len(ms), errs, ix.Rebuild(ms)
-}
 
 func findCmd() *cobra.Command {
 	var opts index.SearchOpts
@@ -75,16 +22,12 @@ func findCmd() *cobra.Command {
 		Use:   "find [query...]",
 		Short: "Search manifests; with no query, list them newest first",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, _, err := openStore("")
+			a, _, err := openApp("")
 			if err != nil {
 				return err
 			}
-			ix, err := openIndex(s)
-			if err != nil {
-				return err
-			}
-			defer ix.Close()
-			rs, err := ix.Search(strings.Join(args, " "), opts)
+			defer a.Close()
+			rs, err := a.Search(strings.Join(args, " "), opts)
 			if err != nil {
 				return err
 			}
@@ -99,7 +42,7 @@ func findCmd() *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "no manifests found")
 				return nil
 			}
-			all, err := ix.IDs()
+			all, err := a.Index.IDs()
 			if err != nil {
 				return err
 			}
@@ -120,23 +63,19 @@ func reindexCmd() *cobra.Command {
 		Short: "Rebuild the search index from manifests/ alone",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			s, _, err := openStore("")
+			a, _, err := openApp("")
 			if err != nil {
 				return err
 			}
-			ix, err := openIndex(s)
+			defer a.Close()
+			n, skipped, err := a.Reindex()
 			if err != nil {
 				return err
 			}
-			defer ix.Close()
-			n, errs, err := rebuild(s, ix)
-			if err != nil {
-				return err
+			fmt.Fprintf(cmd.OutOrStdout(), "indexed %d manifests, skipped %d as corrupt\n", n, skipped)
+			if skipped > 0 {
+				fmt.Fprintln(cmd.ErrOrStderr(), "the skipped files are listed in logs/coal.log")
 			}
-			for _, e := range errs {
-				fmt.Fprintf(cmd.ErrOrStderr(), "skipped: %v\n", e)
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "indexed %d manifests, skipped %d as corrupt\n", n, len(errs))
 			return nil
 		},
 	}
