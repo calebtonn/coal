@@ -233,3 +233,24 @@ func TestCanonicalURI(t *testing.T) {
 		}
 	}
 }
+
+func TestRegisterChecksManifestAndMIME(t *testing.T) {
+	s, m := setup(t)
+	in := ArtifactInput{Content: []byte("orphan?"), Title: "a.txt"}
+	if _, err := s.RegisterArtifact(manifest.NewID(), in, Op{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown manifest: %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(s.Dir(), "artifacts")); len(entries) != 0 {
+		t.Fatalf("a body was stored for a missing manifest")
+	}
+	for _, bad := range []string{"text/html; charset", "not a type", "text/"} {
+		in.MIME = bad
+		if _, err := s.RegisterArtifact(m.ID, in, Op{}); err == nil {
+			t.Errorf("mime %q accepted", bad)
+		}
+	}
+	in.MIME = "text/html; charset=utf-8"
+	if _, err := s.RegisterArtifact(m.ID, in, Op{}); err != nil {
+		t.Errorf("valid mime rejected: %v", err)
+	}
+}

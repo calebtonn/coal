@@ -48,6 +48,15 @@ func init() {
 // uri), where a new body appends a version, or the hash when there is no
 // uri. Possible secrets are recorded with skipped set and never copied.
 func (s *Store) RegisterArtifact(manifestID string, in ArtifactInput, op Op) (*manifest.Artifact, error) {
+	// Check the manifest first, so a bad id never leaves an orphan body.
+	if err := checkID(manifestID); err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(s.manifestPath(manifestID)); errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, manifestID)
+	} else if err != nil {
+		return nil, err
+	}
 	body := in.Content
 	if in.Path != "" {
 		abs, err := filepath.Abs(in.Path)
@@ -73,6 +82,9 @@ func (s *Store) RegisterArtifact(manifestID string, in ArtifactInput, op Op) (*m
 	in.Type = or(in.Type, or(typeByExt[ext], "other"))
 	if in.MIME == "" {
 		in.MIME = guessMIME(ext, body)
+	}
+	if _, _, err := mime.ParseMediaType(in.MIME); err != nil {
+		return nil, fmt.Errorf("artifact mime %q is not a media type: %w", in.MIME, err)
 	}
 	in.Producer.Tool = or(in.Producer.Tool, or(op.Tool, "coal"))
 	op.Action = or(op.Action, "register artifact "+in.Title)
