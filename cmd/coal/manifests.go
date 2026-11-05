@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/calebtonn/coal/internal/index"
 	"github.com/calebtonn/coal/internal/manifest"
 	"github.com/calebtonn/coal/internal/store"
 )
@@ -43,6 +44,7 @@ func addCmd() *cobra.Command {
 			if err := s.Create(m, store.Op{Tool: "coal-cli", Action: "add manifest"}); err != nil {
 				return err
 			}
+			defer indexManifest(cmd, s, m.ID)
 			for _, p := range artifacts {
 				a, err := s.RegisterArtifact(m.ID, store.ArtifactInput{Path: p, Producer: cliProvenance}, store.Op{Tool: "coal-cli"})
 				if err != nil {
@@ -104,6 +106,7 @@ func rmCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			withIndex(cmd, s, func(ix *index.Index) error { return ix.Delete(id) })
 			fmt.Fprintln(cmd.OutOrStdout(), dst)
 			return nil
 		},
