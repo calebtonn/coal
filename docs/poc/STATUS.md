@@ -20,7 +20,11 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 - M5 MCP server (`28fb2b4`, `8229764`): `coal mcp` on stdio with the Go SDK v1.8.0, six tools and the `coal://manifests/active` resource, all through `internal/app`. `coal_find` returns `{results: [...]}` so structured content is an object for older clients, plus a compact text rendering. `coal_update_state` returns a tool error with the current rev and state on a stale `rev`. `coal_record_intent` sets `source: user` only when the model passes `summaryFromUser: true`, and turns `cwd` into a `path` context. Logs go to `logs/mcp.log`. `scripts/mcp-smoke.sh` passes against the sandbox; it keeps stdin open until the find response arrives, because the server drops in-flight requests at EOF. 7 tests pass, also under `-race`.
 - M4 daemon (`1b1b247`, `02cba27`): `coal serve [--port 4242]` on 127.0.0.1 only, `internal/daemon` with the API the web UI calls, `If-Match` on PATCH with 412 and the current manifest on a stale rev, artifact bodies with the stored MIME and `Content-Security-Policy: sandbox`, the embedded UI with SPA fallback and a strict CSP carrying the hash of each inline script, a Host and Origin guard, and `logs/daemon.log` rotating at 10 MB. `make web` and `make dev` work. `go test -race` passes with Zig as the C compiler. `Options.Tick` is the hook for the queue drain and stays nil until M6b.
 
+- End-to-end check by the lead from a fresh sandbox at `85e5f23`: replayed session gives one manifest in the user's words with the HTML artifact, the `.coal` marker and next step "add CSV export"; `coal find`, MCP `coal_find` and `/api/manifests` all return it; the second session start prints the resume line; the daemon serves the artifact with `Content-Security-Policy: sandbox`. Full Go suite and vet pass.
+
 ## In progress
+
+- Fable 5.1 review gate on frozen worktree `.sandbox/review-85e5f23`: three reviewers (capture path; storage, schema and index; daemon, MCP and web UI).
 
 - Nothing.
 
