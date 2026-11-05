@@ -61,9 +61,10 @@ func ProjectRoot(cwd string) string {
 	}
 }
 
-// gitConfig returns the path of the config file for the repo at root,
-// following a .git file (worktrees, submodules) and its commondir.
-func gitConfig(root string) string {
+// commonDir returns the git directory holding config and info/ for the
+// repo at root, following a .git file (worktrees, submodules) and its
+// commondir. It is "" when root has no .git.
+func commonDir(root string) string {
 	dotgit := filepath.Join(root, ".git")
 	fi, err := os.Stat(dotgit)
 	if err != nil {
@@ -92,17 +93,34 @@ func gitConfig(root string) string {
 		}
 		gitdir = common
 	}
-	return filepath.Join(gitdir, "config")
+	if fi, err := os.Stat(gitdir); err != nil || !fi.IsDir() {
+		return ""
+	}
+	return gitdir
+}
+
+// Unanchored reports whether dir is too broad to anchor an intent: the
+// filesystem root, the home directory, or any directory above home.
+func Unanchored(dir string) bool {
+	dir = resolve(dir)
+	if dir == filepath.Dir(dir) {
+		return true
+	}
+	h, err := os.UserHomeDir()
+	if err != nil || h == "" {
+		return false
+	}
+	return under(resolve(h), dir)
 }
 
 // OriginRemote returns the normalized url of remote "origin" for the
 // repo at root, or "" when there is none.
 func OriginRemote(root string) string {
-	cfg := gitConfig(root)
-	if cfg == "" {
+	gd := commonDir(root)
+	if gd == "" {
 		return ""
 	}
-	b, err := os.ReadFile(cfg)
+	b, err := os.ReadFile(filepath.Join(gd, "config"))
 	if err != nil {
 		return ""
 	}
@@ -169,8 +187,9 @@ func validID(id string) bool {
 }
 
 // Find returns the manifest id in the nearest valid .coal marker at or
-// above cwd, and the directory holding it. Only regular files count, so
-// a data directory named .coal (such as $HOME/.coal) never matches.
+// above cwd, and the directory holding it. Only regular files count, and
+// nothing at or above the home directory is read, so the data directory
+// $HOME/.coal or a stray file there never matches.
 // Markers that do not parse or hold no UUIDv7 are skipped.
 func Find(cwd string) (manifestID, markerDir string, ok bool) {
 	walk(cwd, func(id, dir string) bool {
@@ -180,10 +199,14 @@ func Find(cwd string) (manifestID, markerDir string, ok bool) {
 	return
 }
 
-// walk calls fn for each valid marker from cwd up to the root, nearest
-// first, until fn returns false.
+// walk calls fn for each valid marker from cwd upward, nearest first,
+// until fn returns false. It stops below the home directory and the
+// filesystem root, so a .coal there is never read (ADR-013).
 func walk(cwd string, fn func(id, dir string) bool) {
 	for dir := resolve(cwd); ; dir = filepath.Dir(dir) {
+		if Unanchored(dir) {
+			return
+		}
 		if id := read(filepath.Join(dir, FileName)); id != "" && !fn(id, dir) {
 			return
 		}
@@ -220,52 +243,46 @@ func Write(root, id string) error {
 	if !validID(id) {
 		return fmt.Errorf("marker: %q is not a UUIDv7", id)
 	}
+	if Unanchored(root) {
+		return fmt.Errorf("marker: %s is the home directory, above it, or the root; not writing a marker there", root)
+	}
 	path := filepath.Join(root, FileName)
-	if _, err := os.Lstat(path); err == nil {
+	b, _ := json.MarshalIndent(markerFile{Schema: SchemaURL, Manifest: id}, "", "  ")
+	// O_EXCL on the final name never replaces a marker someone else
+	// wrote, and needs no hard links.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if errors.Is(err, os.ErrExist) {
 		if got := read(path); got != id {
 			return fmt.Errorf("marker %s: %w (%q)", path, ErrOtherManifest, got)
 		}
 		return exclude(root)
 	}
-	b, _ := json.MarshalIndent(markerFile{Schema: SchemaURL, Manifest: id}, "", "  ")
-	f, err := os.CreateTemp(root, ".coal-*.tmp")
 	if err != nil {
 		return err
 	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
 	_, err = f.Write(append(b, '\n'))
+	if err == nil {
+		err = f.Sync()
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
-	if err == nil {
-		err = os.Chmod(tmp, 0o644)
-	}
-	if err == nil {
-		// Link fails if the marker appeared meanwhile, so a marker
-		// written by someone else is never replaced.
-		err = os.Link(tmp, path)
-	}
-	if errors.Is(err, os.ErrExist) {
-		if read(path) == id {
-			return exclude(root)
-		}
-		return fmt.Errorf("marker %s: %w", path, ErrOtherManifest)
-	}
 	if err != nil {
+		os.Remove(path)
 		return err
 	}
 	return exclude(root)
 }
 
-// exclude appends .coal to root/.git/info/exclude unless a line already
-// names it. Repos whose .git is a file are left alone.
+// exclude appends .coal to the repo's info/exclude unless a line already
+// names it. For a worktree that is the main repo's info/exclude, which
+// git reads for every worktree.
 func exclude(root string) error {
-	fi, err := os.Stat(filepath.Join(root, ".git"))
-	if err != nil || !fi.IsDir() {
+	gd := commonDir(root)
+	if gd == "" {
 		return nil
 	}
-	info := filepath.Join(root, ".git", "info")
+	info := filepath.Join(gd, "info")
 	if err := os.MkdirAll(info, 0o755); err != nil {
 		return err
 	}

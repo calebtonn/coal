@@ -96,8 +96,8 @@ func TestProjectRootAndRemote(t *testing.T) {
 	}
 
 	ctx := Contexts(sub)
-	if len(ctx) != 2 || ctx[0] != (manifest.Context{Kind: KindPath, Key: repo, Label: "budget"}) ||
-		ctx[1] != (manifest.Context{Kind: KindRepo, Key: "github.com/dave/budget"}) {
+	if len(ctx) != 2 || ctx[0].Kind != KindPath || ctx[0].Key != repo || ctx[0].Label != "budget" ||
+		ctx[1].Kind != KindRepo || ctx[1].Key != "github.com/dave/budget" {
 		t.Errorf("contexts = %+v", ctx)
 	}
 	if ctx := Contexts(plain); len(ctx) != 1 || ctx[0].Key != plain {
@@ -260,4 +260,56 @@ func id(m *manifest.Manifest) string {
 		return "nil"
 	}
 	return m.ID
+}
+
+func TestHomeAndAboveNeverAnchor(t *testing.T) {
+	sandbox(t)
+	home := os.Getenv("HOME")
+	notes := mkdir(t, home, "notes")
+	id := manifest.NewID()
+	// A stray marker file in ~ is never read, and none is ever written there.
+	os.WriteFile(filepath.Join(home, FileName), []byte(`{"manifest":"`+id+`"}`), 0o644)
+	if got, _, ok := Find(notes); ok {
+		t.Errorf("matched ~/.coal from ~/notes: %s", got)
+	}
+	m := man(manifest.StatusActive)
+	m.ID = id
+	if got := Match(notes, []*manifest.Manifest{m}); got != nil {
+		t.Errorf("Match used ~/.coal")
+	}
+	os.Remove(filepath.Join(home, FileName))
+	for _, dir := range []string{home, filepath.Dir(home), "/"} {
+		if !Unanchored(dir) {
+			t.Errorf("%s is anchorable", dir)
+		}
+		if dir == home && Write(dir, id) == nil {
+			t.Error("wrote a marker in ~")
+		}
+	}
+	if Unanchored(notes) {
+		t.Error("~/notes is unanchored")
+	}
+	if _, err := os.Stat(filepath.Join(home, FileName)); err == nil {
+		t.Error("~/.coal exists")
+	}
+}
+
+func TestWorktreeExclude(t *testing.T) {
+	base := sandbox(t)
+	repo := mkdir(t, base, "main")
+	fakeRepo(t, repo, "")
+	wt := mkdir(t, base, "wt")
+	gd := mkdir(t, repo, ".git", "worktrees", "wt")
+	os.WriteFile(filepath.Join(gd, "commondir"), []byte("../..\n"), 0o644)
+	os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+gd+"\n"), 0o644)
+	if err := Write(wt, manifest.NewID()); err != nil {
+		t.Fatal(err)
+	}
+	ex, _ := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
+	if string(ex) != ".coal\n" {
+		t.Errorf("main repo exclude: %q", ex)
+	}
+	if _, err := os.Stat(filepath.Join(gd, "info")); err == nil {
+		t.Error("wrote info/ in the worktree gitdir")
+	}
 }

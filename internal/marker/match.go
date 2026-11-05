@@ -1,7 +1,6 @@
 package marker
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -40,10 +39,6 @@ func Match(cwd string, candidates []*manifest.Manifest) *manifest.Manifest {
 	}
 
 	dir := resolve(cwd)
-	home := ""
-	if h, err := os.UserHomeDir(); err == nil && h != "" {
-		home = resolve(h)
-	}
 	var best *manifest.Manifest
 	bestLen := 0
 	for _, m := range live {
@@ -52,7 +47,7 @@ func Match(cwd string, candidates []*manifest.Manifest) *manifest.Manifest {
 				continue
 			}
 			key := filepath.Clean(c.Key)
-			if key == "/" || (home != "" && under(home, key)) {
+			if Unanchored(key) {
 				continue
 			}
 			if under(dir, key) && (len(key) > bestLen || len(key) == bestLen && newer(m, best)) {
