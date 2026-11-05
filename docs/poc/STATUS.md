@@ -13,10 +13,11 @@ Updated 2026-11-04. Branch `poc/go`. Data dir for all testing: `.sandbox/coal` (
 - PR #10 fetched as `pr-10` and merged into `poc/go` (`0c95b8b`); ADR-011 to ADR-015 marked accepted for the POC. Follow-up edits to F5, T08, T09, the README phase table, the definition of done and the capture diagram (`731d9bf`).
 
 - M7 web UI on Svelte 5 and `@davenicoll/web-framework` (`1b6c815`, `ce6489d`, `6e0b921`): 15 Vitest tests pass, svelte-check clean. It depends on the sibling checkout through symlinks, so `preserveSymlinks` is set in the Vite and TypeScript configs. Built against the M4 API contract; not yet wired to a daemon. The Ajv validator is generated at build time (`748f9f5`), so no `unsafe-eval` is needed; regenerate with `bun run gen:validator` in `web/` after a schema change (a test fails if it drifts).
+- M2 store: `internal/store` and the `skipped` field on artifact versions (`da41f14`); `coal add`, `coal show`, `coal rm`, and `coal init` through the store, in the commit that adds this line. History commits `manifests/` and `sessions/` only; `config.json` and `.gitignore` stay untracked.
 
 ## In progress
 
-- M2 store (builder on Opus).
+- Nothing.
 
 ## Next
 
@@ -32,9 +33,9 @@ Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay o
 | #2 How summaries get written | Docs done; code waits for M6 | `731d9bf` |
 | #3 systemMessage resume | Docs done; code waits for M6 | `731d9bf` |
 | #4 Session matching | Docs done; code waits for M6 | `731d9bf` |
-| #5 Artifact identity | Schema done; store in M2 | `ad0e43e` |
-| #6 rev compare-and-swap | Schema done; store in M2, API in M4, MCP in M5 | `ad0e43e` |
-| #7 Secrets | Schema rule done; scan in M2; purge in M9 | `ad0e43e` |
+| #5 Artifact identity | Schema and store done; MCP `version` argument in M5 | `ad0e43e`, `da41f14` |
+| #6 rev compare-and-swap | Schema and store done; API in M4, MCP in M5 | `ad0e43e`, `da41f14` |
+| #7 Secrets | Schema rule, deny-list and token scan done; purge in M9 | `ad0e43e`, `da41f14` |
 | #8 Hooks in other tools | Done | `1d10c78` |
 | #9 Smaller inconsistencies | Done. OpenPortable dropped because it could not be found | `ad0e43e`, `b8a7a95` |
 | #11 Summary filter, rename | Filter in M6; rename in M9 | |
