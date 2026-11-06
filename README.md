@@ -111,9 +111,9 @@ Done when: a manifest written by software this repo did not produce validates an
 
 - A name and an icon for each area of work, such as the home budget or a video
 - Areas that stay open, with projects inside them through `partOf`
-- A kit of entry points: chats, MCP servers, and links to docs, data, planners, notes and apps outside AI such as Final Cut Pro
-- Large files, such as video exports, kept by reference instead of copied
-- Opt-in folder watching, so work in apps without hooks still moves the record
+- A kit of entry points: chats, MCP servers, and links to docs, data, planners, notes, and files that open in apps outside AI, such as a Final Cut Pro library
+- Large files, such as video exports, kept by reference instead of copied (the schema change lands by spec v1.0)
+- Opt-in folder watching, so work in apps without hooks still updates the record
 - `coal open` and launchers that bring up the kit, the active projects and the next step together
 - MCP servers attached on open where the tool allows it, and listed as links where it does not
 
