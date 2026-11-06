@@ -109,9 +109,11 @@ Done when: a manifest written by software this repo did not produce validates an
 
 ### Phase 5: Places (proposed, ADR-017)
 
-- A name and an icon for each area of work, such as the home budget
+- A name and an icon for each area of work, such as the home budget or a video
 - Areas that stay open, with projects inside them through `partOf`
-- A kit of entry points: chats, MCP servers, and links to docs, data, planners and notes
+- A kit of entry points: chats, MCP servers, and links to docs, data, planners, notes and apps outside AI such as Final Cut Pro
+- Large files, such as video exports, kept by reference instead of copied
+- Opt-in folder watching, so work in apps without hooks still moves the record
 - `coal open` and launchers that bring up the kit, the active projects and the next step together
 - MCP servers attached on open where the tool allows it, and listed as links where it does not
 
