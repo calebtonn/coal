@@ -149,3 +149,25 @@ Considered: an append-only event log per manifest with the manifest as a project
 - The resume moment has two forms. Plain `claude` in a matched directory: the `SessionStart` hook prints a `systemMessage` banner with the next step before the user types, and injects `additionalContext` so the first reply opens by offering to continue. `coal resume`: a launcher that finds the manifest for the directory and starts the harness with a first prompt already supplied, so the first turn is the resume. The demo uses `coal resume`.
 
 **Consequences.** `coal resume` moves a small piece of the Phase 2 entry-point idea into Phase 1. The headline wording changes from "the tool speaks first before you type" to "the next session opens with the next step." How `SessionStart` output is displayed has changed between Claude Code releases; T09 verifies on the current build.
+
+## ADR-017: Places: a named home for each area of work
+
+**Status.** Proposed 2026-11-06. Phase 5. Nothing here is built before the Phase 1 retro.
+
+**Context.** Applications in an operating system were named, iconed entry points into a kind of work. Open the spreadsheet app and the tools and files for that work are there. AI chat interfaces lost that. Every tool opens on an empty prompt and a list of conversations, and the user rebuilds the setup each time: which chat, which files, which data sources. COAL records the work and, through resume (ADR-016), brings back the next step of one session. A manifest is still something you find, not something you open. Some work also never finishes. A home budget is an area of ongoing responsibility, and "add CSV export" is a project inside it. The schema does not tell the two apart.
+
+**Decision (proposed).**
+- A place is a manifest a person can open. It gets an optional display name and icon: `intent.name` (for example "Home budget") and `intent.icon` (an emoji or the hash of an image artifact).
+- A manifest gets an optional `kind`: `project`, the default, which can be done, or `area`, which stays open. A project joins an area through the existing `links[]` entry with `rel: partOf`. No new relation is needed.
+- A manifest gets an optional `kit[]`: the entry points that belong to the work. Each entry has a `type` (`chat`, `doc`, `data`, `mcp`, `planner`, `tool` or `url`), a `title`, and a locator: a `uri`, or for `mcp` the server's name and how to reach it. For the home budget that could be the claude.ai project, the budget spreadsheet, the folder of bank exports, a spreadsheet MCP server, the planner list and the ideas note.
+- Opening a place, through `coal open <place>` or any launcher (the Phase 2 Raycast extension, the Phase 3 menu bar app), shows its name, icon, kit, open projects and next step, and launches from the kit. Where a tool allows it, opening also attaches the place's MCP servers and injects the next step as resume does. Claude Code allows this through project configuration. Where a tool does not, the kit is a list the user opens by hand.
+- The kit is data in the manifest that any client can read. COAL defines what a place contains. It does not become the launcher that owns it.
+
+Considered: a separate workspace object. Rejected for now, because it is a second record type for readers and writers to learn, and an area manifest with `partOf` children covers the same ground. Leaving it to each tool (Claude Projects, Cursor workspaces). Rejected, because each tool holds only its own pieces, which is the problem COAL exists to solve. A COAL launcher or desktop shell. Rejected, because it competes with operating systems and launchers instead of feeding them.
+
+**Consequences.**
+- Schema v0.2 adds optional fields only. v0.1 readers ignore them (design rule 5 in `docs/04-INTENT-MANIFEST.md`).
+- A kit points at private things: chat URLs, file paths, server names. Design rule 6 still applies. Entries are locators, never credentials, and an `mcp` entry names a server without carrying its keys.
+- Most tools do not let an outside program attach MCP servers, so a place is complete only in tools that allow it. Elsewhere it is a list of links. The docs say so rather than promise more.
+- `intent.name` and `intent.icon` are cheap and help every phase, so they may go into v0.2 ahead of the rest of this ADR if the Phase 1 retro says continue.
+- The README gains Phase 5, Places, after Phase 4, marked proposed. The Phase 2 Raycast extension and the Phase 3 menu bar app are its first pieces.

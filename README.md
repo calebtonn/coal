@@ -56,7 +56,7 @@ Capture comes from Claude Code only. Cursor, Codex CLI and Gemini CLI have lifec
 
 ## Phases
 
-The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds up. Each one starts only after the retro on the one before it. Phase 1 has a date. The others do not.
+The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds up, and Phase 5 is a proposal. Each one starts only after the retro on the one before it. Phase 1 has a date. The others do not.
 
 | Phase | Name | Status | What it has to show |
 |---|---|---|---|
@@ -64,6 +64,7 @@ The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds
 | 2 | Reach | Not started | Capture works from every tool, including ones with no hooks |
 | 3 | Attention | Not started | The record plus simple rules is enough to surface the right thing at the right time |
 | 4 | Portability | Not started | Someone else's software writes manifests that work here |
+| 5 | Places | Proposed | Each area of work has a name, an icon and its tools, opened in one step |
 
 ### Phase 1: Record (the MVP, six weeks)
 
@@ -105,6 +106,18 @@ Done when: surfaced items get opened more often than dismissed, and nobody has t
 - Org install and fleet config, open source like everything else
 
 Done when: a manifest written by software this repo did not produce validates and resumes here.
+
+### Phase 5: Places (proposed, ADR-017)
+
+Applications gave each kind of work a name, an icon and a place to start. Chat interfaces lost that. A place brings it back for an area of work such as the home budget.
+
+- A name and an icon for each place
+- Areas that stay open, with projects inside them through `partOf`
+- A kit of entry points: chats, docs, data, planners, ideas and MCP servers
+- `coal open <place>` and launchers that open the kit, the open projects and the next step together
+- MCP servers attached on open where the tool allows it, and listed where it does not
+
+Done when: for a month, work on an area starts from its place more often than from a tool's own chat list.
 
 ## Principles
 
