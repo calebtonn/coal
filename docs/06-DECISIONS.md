@@ -124,7 +124,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 Considered: an append-only event log per manifest with the manifest as a projection. More precise, but a second format for readers and implementers to understand. Not keeping history: the current spec.
 
-**Consequences.** Git (or `isomorphic-git`) becomes a dependency. History comes with ordinary tools: `git log`, `git diff`, `git revert`. Phase 4 sync can start from syncing a git repository. Lost updates are still handled by #6; history only makes them visible. Only `manifests/` is committed; session scratch and open copies stay out of the history. Commits are not one per write: writers that finish close together can share a commit, so a commit message names the write that took the lock, not every change in it.
+**Consequences.** Git (or `isomorphic-git`) becomes a dependency. History comes with ordinary tools: `git log`, `git diff`, `git revert`. Phase 4 sync can start from syncing a git repository. Lost updates are still handled by #6; history only makes them visible. Only `manifests/` is committed; session scratch and open copies stay out of the history. Commits are not one per write: writers that finish close together can share a commit, so a commit message names the write that took the lock, not every change in it. Hooks open the store with deferred history: a write touches `.history-pending` and runs no git, the daemon commits once that marker has been quiet for two seconds, and any non-hook command commits what is pending when it opens the store.
 
 ## ADR-015: Use Agent Trace for line-level code provenance
 
