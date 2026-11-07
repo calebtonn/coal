@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -481,5 +483,52 @@ func TestAllowedHostDefaultPort(t *testing.T) {
 		if got := check(c.host, c.local); got != c.ok {
 			t.Errorf("Host %q on %v: allowed %v, want %v", c.host, c.local, got, c.ok)
 		}
+	}
+}
+
+// ADR-014: hooks leave history pending; the daemon tick commits it once
+// it has been quiet long enough, and logs the commit.
+func TestTickCommitsPendingHistory(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not on PATH")
+	}
+	home := t.TempDir()
+	a, err := app.Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Close() })
+	commits := func() int {
+		out, _ := exec.Command(git, "-C", home, "rev-list", "--count", "--all").Output()
+		n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+		return n
+	}
+
+	// A hook's write: deferred history, so no git runs.
+	hook, err := store.Open(home, store.WithDeferredHistory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := manifest.New("Household budget tracker", manifest.SourceUser, manifest.Provenance{Tool: "test"})
+	if err := hook.Create(m, store.Op{Tool: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	before := commits()
+
+	var logged bytes.Buffer
+	s, _ := newServer(a, Options{Logger: log.New(&logged, "", 0), CommitQuiet: time.Hour})
+	s.tick()
+	if commits() != before {
+		t.Fatal("committed before the quiet window passed")
+	}
+	s.opts.CommitQuiet = time.Nanosecond
+	s.tick()
+	if commits() != before+1 || !strings.Contains(logged.String(), "history: committed pending writes") {
+		t.Fatalf("commits %d -> %d, log %q", before, commits(), logged.String())
+	}
+	s.tick()
+	if commits() != before+1 {
+		t.Fatal("a tick with nothing pending made a commit")
 	}
 }

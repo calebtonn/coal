@@ -26,8 +26,13 @@ type Options struct {
 	Logger *log.Logger // one line per request; Serve defaults it to logs/daemon.log
 	Tick   func()      // called every TickEvery while serving, for the queue drain
 	// TickEvery defaults to two seconds. Each tick also clears the
-	// artifact MIME cache, since a drain may have added artifacts.
+	// artifact MIME cache, since a drain may have added artifacts, and
+	// commits history that hooks left pending (ADR-014).
 	TickEvery time.Duration
+	// CommitQuiet is how long pending history must sit untouched before
+	// a tick commits it, so a burst of hook writes lands as one commit.
+	// It defaults to two seconds.
+	CommitQuiet time.Duration
 	// Ready is called with the listener address once Serve is listening.
 	Ready func(net.Addr)
 }
@@ -131,6 +136,26 @@ func (s *server) tick() {
 		s.opts.Tick()
 	}
 	s.mimes.reset()
+	quiet := s.opts.CommitQuiet
+	if quiet <= 0 {
+		quiet = 2 * time.Second
+	}
+	// Hooks never run git; they leave a pending marker for this.
+	ok, err := s.app.Store.CommitPending("", quiet)
+	switch {
+	case err != nil:
+		s.logf("history: committing pending writes: %v", err)
+	case ok:
+		s.logf("history: committed pending writes")
+	}
+}
+
+func (s *server) logf(format string, args ...any) {
+	if s.logger != nil {
+		s.logger.Printf(format, args...)
+	} else {
+		s.app.Store.Log(format, args...)
+	}
 }
 
 // guard rejects other host names (DNS rebinding) and cross-origin writes,
