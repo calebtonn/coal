@@ -56,16 +56,12 @@ func (e *env) config(summarizer any) {
 	}
 }
 
-// job writes a job file the way capture's fold does.
+// job queues a job through Enqueue, as capture's fold does.
 func (e *env) job() string {
-	dir := Dir(e.a.Store.Dir())
-	os.MkdirAll(dir, 0o700)
-	p := filepath.Join(dir, "claude-code_session_s1.json")
-	b, _ := json.Marshal(Job{ManifestID: e.id, SessionRef: "claude-code:session:s1", TranscriptPath: e.tr, StartedAt: e.start})
-	if err := os.WriteFile(p, b, 0o600); err != nil {
+	if err := Enqueue(e.a.Store.Dir(), Job{ManifestID: e.id, SessionRef: "claude-code:session:s1", TranscriptPath: e.tr, StartedAt: e.start}); err != nil {
 		e.t.Fatal(err)
 	}
-	return p
+	return filepath.Join(Dir(e.a.Store.Dir()), "claude-code_session_s1.json")
 }
 
 func (e *env) stamp(tool, at string) {
@@ -196,5 +192,51 @@ func TestRunnerKick(t *testing.T) {
 	}
 	if m, _ := e.a.Get(e.id); m.State.NextStep != "Add CSV export" {
 		t.Errorf("state %+v", m.State)
+	}
+}
+
+func TestEnqueueReplacesAndLeavesNoTemp(t *testing.T) {
+	home := t.TempDir()
+	for _, tr := range []string{"/t/one.jsonl", "/t/two.jsonl"} {
+		if err := Enqueue(home, Job{ManifestID: "m", SessionRef: "claude-code:session:a/b", TranscriptPath: tr}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ents, _ := os.ReadDir(Dir(home))
+	if len(ents) != 1 || ents[0].Name() != "claude-code_session_a_b.json" {
+		t.Fatalf("entries %v", ents)
+	}
+	var j Job
+	b, _ := os.ReadFile(filepath.Join(Dir(home), ents[0].Name()))
+	if json.Unmarshal(b, &j); j.TranscriptPath != "/t/two.jsonl" {
+		t.Errorf("job %+v", j)
+	}
+	if Enqueue(home, Job{ManifestID: "m"}) == nil {
+		t.Error("a job without a session ref was queued")
+	}
+}
+
+func TestStampRecordedByModel(t *testing.T) {
+	m := &manifest.Manifest{}
+	if StampRecordedByModel(m, "2026-11-06T10:00:00Z") {
+		t.Error("no stamp counted as recorded")
+	}
+	set := func(tool, at string) {
+		b, _ := json.Marshal(manifest.StateStamp{RecordedBy: tool, At: at})
+		m.Ext = map[string]json.RawMessage{manifest.StateExtKey: b}
+	}
+	for _, c := range []struct {
+		tool, at string
+		want     bool
+	}{
+		{"claude-code", "2026-11-06T10:00:00Z", true},
+		{"claude-code", "2026-11-06T11:00:00Z", true},
+		{"claude-code", "2026-11-06T09:59:59Z", false},
+		{Tool, "2026-11-06T11:00:00Z", false},
+	} {
+		set(c.tool, c.at)
+		if got := StampRecordedByModel(m, "2026-11-06T10:00:00Z"); got != c.want {
+			t.Errorf("%s at %s: got %v", c.tool, c.at, got)
+		}
 	}
 }

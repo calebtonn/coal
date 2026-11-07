@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -33,6 +34,41 @@ type Job struct {
 // Dir is where jobs wait. Hook drains read only regular files directly
 // in queue/, so they never see it.
 func Dir(home string) string { return filepath.Join(home, "queue", "summarize") }
+
+var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]`)
+
+// Enqueue writes j to queue/summarize/<sessionRef>.json, with characters
+// outside [A-Za-z0-9._-] replaced by "_", through a dotfile and a rename
+// so a runner never reads half a job. A later job for the same session
+// replaces the earlier one.
+func Enqueue(home string, j Job) error {
+	if j.SessionRef == "" || j.ManifestID == "" {
+		return errors.New("summarize job needs a session ref and a manifest id")
+	}
+	dir := Dir(home)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	b, err := json.Marshal(j)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".job-*.tmp")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(b, '\n'))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), filepath.Join(dir, unsafeName.ReplaceAllString(j.SessionRef, "_")+".json"))
+	}
+	if err != nil {
+		os.Remove(f.Name())
+	}
+	return err
+}
 
 // Result counts what RunJobs did.
 type Result struct {
@@ -127,7 +163,7 @@ func runJob(ctx context.Context, a *app.App, cfg *Config, path string) (bool, er
 	if err != nil {
 		return false, err
 	}
-	if recorded(m, j.StartedAt) {
+	if StampRecordedByModel(m, j.StartedAt) {
 		return false, nil
 	}
 	summary, next, err := Run(ctx, cfg, j.TranscriptPath)
@@ -137,7 +173,7 @@ func runJob(ctx context.Context, a *app.App, cfg *Config, path string) (bool, er
 	applied := false
 	_, err = a.Update(j.ManifestID, 0, func(m *manifest.Manifest) error {
 		// The model may have recorded state while the summarizer ran.
-		if recorded(m, j.StartedAt) {
+		if StampRecordedByModel(m, j.StartedAt) {
 			return store.ErrNoChange
 		}
 		before := m.State
@@ -155,11 +191,13 @@ func runJob(ctx context.Context, a *app.App, cfg *Config, path string) (bool, er
 	return applied, err
 }
 
-// recorded reports whether something other than the summarizer stamped
-// the state at or after the session started: the model recorded its own
-// state, which always wins. The summarizer's own stamps do not count, or
-// a late run for one session would hide the next session.
-func recorded(m *manifest.Manifest, startedAt string) bool {
+// StampRecordedByModel reports whether something other than the
+// summarizer stamped the state at or after since (a session's start):
+// the model recorded its own state, which always wins. The summarizer's
+// own stamps do not count, or a late run for one session would hide the
+// next. Capture's session-end fallback and the job runner both use it.
+func StampRecordedByModel(m *manifest.Manifest, since string) bool {
+	startedAt := since
 	st, ok := manifest.StateStampOf(m)
 	if !ok || st.RecordedBy == Tool {
 		return false
