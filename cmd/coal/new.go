@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +40,7 @@ func newCmd() *cobra.Command {
 				if intent != "" {
 					return errors.New("use --intent or --switch, not both")
 				}
-				return switchMarker(out, root, switchTo)
+				return switchMarker(cmd, root, switchTo)
 			}
 			if strings.TrimSpace(intent) == "" {
 				return errors.New("--intent is required: say what you are starting, in your words")
@@ -62,13 +61,9 @@ func newCmd() *cobra.Command {
 			if err := a.Create(m, store.Op{Tool: "coal-cli", Action: "new"}); err != nil {
 				return err
 			}
-			switch {
-			case cfg.Markers == fold.MarkersNone:
-				fmt.Fprintln(cmd.ErrOrStderr(), "markers are off in config.json; no .coal written, sessions match by path")
-			case valid:
-				err = marker.Activate(root, m.ID)
-			default:
-				err = marker.Write(root, m.ID)
+			note, err := pointMarker(root, m.ID, valid, cfg.Markers)
+			if note != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(), note)
 			}
 			if err != nil {
 				return fmt.Errorf("created %s but could not update the marker: %w", m.ID, err)
@@ -82,32 +77,93 @@ func newCmd() *cobra.Command {
 	return cmd
 }
 
-// switchMarker makes the listed manifest matching prefix active.
-func switchMarker(w io.Writer, root, prefix string) error {
-	_, ids, ok := marker.Read(root)
-	if !ok {
-		return fmt.Errorf("no COAL marker in %s", root)
+// pointMarker makes id the active manifest in root's marker. A marker
+// that exists is always updated: matching reads it, so leaving it on the
+// old id would keep sessions there, and the markers setting only stops
+// COAL creating new marker files. valid says whether root held a valid
+// marker when the caller looked; if a capture writes the first marker
+// after that, Write reports ErrOtherManifest and the id is added to the
+// now valid marker instead. note is a line for the user, or "".
+func pointMarker(root, id string, valid bool, markers string) (note string, err error) {
+	if valid {
+		if markers == fold.MarkersNone {
+			note = "markers are off in config.json, but this project already has a .coal marker; it now points at the new manifest"
+		}
+		return note, marker.Activate(root, id)
 	}
+	if markers == fold.MarkersNone {
+		return "markers are off in config.json; no .coal written, sessions match by path", nil
+	}
+	err = marker.Write(root, id)
+	if errors.Is(err, marker.ErrOtherManifest) {
+		err = marker.Activate(root, id)
+	}
+	return "", err
+}
+
+// switchMarker makes a manifest active in root's marker: one the
+// marker lists, or any active or paused manifest whose path context is
+// this project root, which is then added to the list.
+func switchMarker(cmd *cobra.Command, root, prefix string) error {
 	prefix = strings.ToLower(prefix)
 	if len(prefix) < 8 {
 		return fmt.Errorf("id prefix %q is too short; give at least 8 characters", prefix)
 	}
+	_, ids, hasMarker := marker.Read(root)
 	var hits []string
 	for _, id := range ids {
 		if strings.HasPrefix(id, prefix) {
 			hits = append(hits, id)
 		}
 	}
-	switch len(hits) {
-	case 0:
-		return fmt.Errorf("%s is not one of this project's manifests: %s", prefix, strings.Join(ids, ", "))
-	case 1:
-	default:
+	if len(hits) > 1 {
 		return fmt.Errorf("id prefix %s matches %d of this project's manifests", prefix, len(hits))
 	}
-	if err := marker.Activate(root, hits[0]); err != nil {
+	a, _, err := openApp("")
+	if err != nil {
 		return err
 	}
-	fmt.Fprintln(w, hits[0])
+	defer a.Close()
+	id := ""
+	if len(hits) == 1 {
+		id = hits[0]
+	} else {
+		if id, err = a.Resolve(prefix); err != nil {
+			return err
+		}
+		m, err := a.Get(id)
+		if err != nil {
+			return err
+		}
+		if !forProject(m, root) {
+			return fmt.Errorf("%s is not an active or paused manifest for %s", id, root)
+		}
+	}
+	switch {
+	case hasMarker:
+		err = marker.Activate(root, id)
+	case fold.LoadConfig(a.Store.Dir()).Markers == fold.MarkersNone:
+		return errors.New("this project has no .coal marker and markers are off in config.json; nothing to switch")
+	default:
+		err = marker.Write(root, id)
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), id)
 	return nil
+}
+
+// forProject reports whether m is active or paused and has a path
+// context equal to root.
+func forProject(m *manifest.Manifest, root string) bool {
+	if m.Status != manifest.StatusActive && m.Status != manifest.StatusPaused {
+		return false
+	}
+	for _, c := range m.Contexts {
+		if c.Kind == marker.KindPath && filepath.Clean(c.Key) == root {
+			return true
+		}
+	}
+	return false
 }

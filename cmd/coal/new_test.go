@@ -10,6 +10,7 @@ import (
 	"github.com/calebtonn/coal/internal/app"
 	"github.com/calebtonn/coal/internal/manifest"
 	"github.com/calebtonn/coal/internal/marker"
+	"github.com/calebtonn/coal/internal/store"
 )
 
 // newEnv makes a git project, points HOME away, and changes into it.
@@ -112,5 +113,75 @@ func TestCoalNewMarkersNone(t *testing.T) {
 	lines := strings.Fields(out)
 	if id := lines[len(lines)-1]; len(id) != 36 || !strings.Contains(out, "markers are off") {
 		t.Errorf("output %q", out)
+	}
+}
+
+func TestCoalNewMarkersNoneUpdatesExisting(t *testing.T) {
+	home, project := newEnv(t)
+	first := strings.TrimSpace(coal(t, home, "new", "--intent", "Household budget tracker"))
+	os.WriteFile(filepath.Join(home, "config.json"), []byte(`{"markers":"none"}`), 0o600)
+	out := coal(t, home, "new", "--intent", "Savings goals page")
+	lines := strings.Fields(out)
+	second := lines[len(lines)-1]
+	active, ids, _ := marker.Read(project)
+	if active != second || len(ids) != 2 || ids[0] != first {
+		t.Errorf("marker: %s %v", active, ids)
+	}
+	if !strings.Contains(out, "already has a .coal marker") {
+		t.Errorf("output does not say the marker was updated: %q", out)
+	}
+}
+
+func TestPointMarkerRace(t *testing.T) {
+	_, project := newEnv(t)
+	captured, mine := manifest.NewID(), manifest.NewID()
+	// coal new looked and saw no marker; then capture wrote one.
+	if err := marker.Write(project, captured); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pointMarker(project, mine, false, "project"); err != nil {
+		t.Fatal(err)
+	}
+	active, ids, _ := marker.Read(project)
+	if active != mine || len(ids) != 2 || ids[0] != captured {
+		t.Errorf("after the race: %s %v", active, ids)
+	}
+}
+
+func TestSwitchToProjectManifest(t *testing.T) {
+	home, project := newEnv(t)
+	first := strings.TrimSpace(coal(t, home, "new", "--intent", "Household budget tracker"))
+	a, err := app.Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := func(status, key string) string {
+		m := manifest.New("Made elsewhere", manifest.SourceUser, cliProvenance)
+		m.Status = status
+		m.Contexts = []manifest.Context{{Kind: marker.KindPath, Key: key}}
+		if err := a.Create(m, store.Op{Tool: "test"}); err != nil {
+			t.Fatal(err)
+		}
+		return m.ID
+	}
+	paused := mk(manifest.StatusPaused, project)
+	done := mk(manifest.StatusDone, project)
+	other := mk(manifest.StatusActive, filepath.Join(filepath.Dir(project), "other"))
+	a.Close()
+
+	if got := strings.TrimSpace(coal(t, home, "new", "--switch", paused)); got != paused {
+		t.Errorf("switch printed %q", got)
+	}
+	active, ids, _ := marker.Read(project)
+	if active != paused || len(ids) != 2 || ids[0] != first {
+		t.Errorf("after switch: %s %v", active, ids)
+	}
+	for _, id := range []string{done, other} {
+		if err := coalErr(home, "new", "--switch", id); err == nil {
+			t.Errorf("switched to %s", id)
+		}
+	}
+	if active, _, _ := marker.Read(project); active != paused {
+		t.Errorf("a refused switch changed the marker to %s", active)
 	}
 }
