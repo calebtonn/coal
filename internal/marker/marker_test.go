@@ -339,3 +339,33 @@ func TestDotfilesHomeRepo(t *testing.T) {
 		t.Errorf("nested repo root = %q", got)
 	}
 }
+
+func TestActivate(t *testing.T) {
+	base := sandbox(t)
+	root := mkdir(t, base, "p")
+	a, b := manifest.NewID(), manifest.NewID()
+	if err := Activate(root, a); err == nil {
+		t.Error("activated without a marker")
+	}
+	os.WriteFile(filepath.Join(root, FileName), []byte("notes"), 0o644)
+	if err := Activate(root, a); err == nil {
+		t.Error("rewrote a file that is not a marker")
+	}
+	os.Remove(filepath.Join(root, FileName))
+	Write(root, a)
+	for _, id := range []string{b, a, b} {
+		if err := Activate(root, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	active, ids, ok := Read(root)
+	if !ok || active != b || len(ids) != 2 || ids[0] != a || ids[1] != b {
+		t.Errorf("Read = %s %v %v", active, ids, ok)
+	}
+	if got, _, _ := Find(root); got != b {
+		t.Errorf("Find = %s, want the active id", got)
+	}
+	if left, _ := filepath.Glob(filepath.Join(root, ".coal-*")); len(left) != 0 {
+		t.Errorf("temp files left: %v", left)
+	}
+}

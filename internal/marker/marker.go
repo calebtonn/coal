@@ -30,8 +30,9 @@ const (
 )
 
 type markerFile struct {
-	Schema   string `json:"$schema"`
-	Manifest string `json:"manifest"`
+	Schema    string   `json:"$schema"`
+	Manifest  string   `json:"manifest"`
+	Manifests []string `json:"manifests,omitempty"`
 }
 
 // resolve makes p absolute and resolves symlinks, falling back to the
@@ -221,21 +222,93 @@ func walk(cwd string, fn func(id, dir string) bool) {
 	}
 }
 
-// read returns the manifest id in a marker file, or "".
+// read returns the active manifest id in a marker file, or "".
 func read(path string) string {
+	m, _ := readFile(path)
+	return m.Manifest
+}
+
+// readFile decodes a marker. ok is false when the file is missing, not a
+// regular file, too big, or holds no valid active id.
+func readFile(path string) (markerFile, bool) {
 	fi, err := os.Stat(path)
 	if err != nil || !fi.Mode().IsRegular() || fi.Size() > 64<<10 {
-		return ""
+		return markerFile{}, false
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return ""
+		return markerFile{}, false
 	}
 	var m markerFile
 	if json.Unmarshal(b, &m) != nil || !validID(m.Manifest) {
-		return ""
+		return markerFile{}, false
 	}
-	return m.Manifest
+	return m, true
+}
+
+// Read returns the marker at root/.coal: the active id and every id it
+// lists, the active one included, without duplicates. ok is false when
+// there is no valid marker there.
+func Read(root string) (active string, ids []string, ok bool) {
+	m, ok := readFile(filepath.Join(root, FileName))
+	if !ok {
+		return "", nil, false
+	}
+	return m.Manifest, listWith(m.Manifests, m.Manifest), true
+}
+
+// listWith returns ids with id appended, keeping order, dropping
+// duplicates and anything that is not a UUIDv7.
+func listWith(ids []string, id string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, x := range append(append([]string{}, ids...), id) {
+		if validID(x) && !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// Activate rewrites root/.coal so active is the manifest id that
+// matching uses, keeping every id the marker listed and adding active
+// to the list (ADR-013). It is the one deliberate rewrite of a marker,
+// done with a temp file and a rename. root must already hold a valid
+// marker; an unreadable .coal is left alone.
+func Activate(root, active string) error {
+	if !validID(active) {
+		return fmt.Errorf("marker: %q is not a UUIDv7", active)
+	}
+	path := filepath.Join(root, FileName)
+	m, ok := readFile(path)
+	if !ok {
+		return fmt.Errorf("marker %s: missing or not a COAL marker; not rewriting it", path)
+	}
+	ids := listWith(listWith(m.Manifests, m.Manifest), active)
+	b, _ := json.MarshalIndent(markerFile{Schema: SchemaURL, Manifest: active, Manifests: ids}, "", "  ")
+	f, err := os.CreateTemp(root, ".coal-*.tmp")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(b, '\n'))
+	if err == nil {
+		err = f.Sync()
+	}
+	if err == nil {
+		err = f.Chmod(0o644)
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), path)
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return err
+	}
+	return exclude(root)
 }
 
 // ErrOtherManifest means a marker already exists for another manifest.
