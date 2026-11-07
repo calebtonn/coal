@@ -56,7 +56,7 @@ Capture comes from Claude Code only. Cursor, Codex CLI and Gemini CLI have lifec
 
 ## Phases
 
-The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds up. Each one starts only after the retro on the one before it. Phase 5 is a proposal (ADR-017), and a small part of it may land earlier. Phase 1 has a date. The others do not.
+The MVP is Phase 1. Phases 2 through 5 describe where this goes if Phase 1 holds up. Each one starts only after the retro on the one before it. Phase 5 is a proposal (ADR-017), and a small part of it may land earlier. Phase 1 has a date. The others do not.
 
 | Phase | Name | Status | What it has to show |
 |---|---|---|---|

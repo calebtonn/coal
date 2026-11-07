@@ -67,7 +67,7 @@ A file or URI produced during a session. Registered artifacts are copied into co
 - `coal add --intent "..." [--artifact path]...` creates a manifest
 - `coal find "<query>"` searches, prints a table: id, summary, status, last activity, artifact count
 - `coal show <id>` prints the manifest
-- `coal open <id> [--artifact n]` opens the artifact with the OS default handler
+- `coal open <id> [--artifact n]` opens the artifact with the OS default handler. ADR-017 (Proposed) gives the no-flag form place behaviour; until it is accepted, `coal open <id>` opens the first artifact.
 - `coal reindex`
 - `coal mcp` runs the MCP server on stdio (used by tool configs)
 - `coal resume [--tool claude-code]` finds the manifest for the current directory and launches the harness with a first prompt that asks it to open from the next step
