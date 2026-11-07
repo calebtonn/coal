@@ -31,6 +31,9 @@ type Job struct {
 	// EndedAt is when the session ended. A job whose session ended
 	// before the manifest's latest activity is stale and skipped.
 	EndedAt string `json:"endedAt,omitempty"`
+	// ProjectsRoot is ProjectsRoot() as the hook saw it, an extra root
+	// for AllowedTranscript.
+	ProjectsRoot string `json:"projectsRoot,omitempty"`
 }
 
 // Dir is where jobs wait. Hook drains read only regular files directly
@@ -127,8 +130,8 @@ func runJob(ctx context.Context, a *app.App, cfg *Config, path string) (bool, er
 	if j.ManifestID == "" || j.TranscriptPath == "" {
 		return false, errors.New("job has no manifest id or transcript path")
 	}
-	if !AllowedTranscript(j.TranscriptPath) {
-		return false, errors.New("transcript path is not a .jsonl file under the Claude Code projects directory")
+	if !AllowedTranscript(j.TranscriptPath, j.ProjectsRoot) {
+		return false, errors.New("transcript path is not a .jsonl file under a Claude Code projects directory")
 	}
 	m, err := a.Get(j.ManifestID)
 	if err != nil {
@@ -194,33 +197,51 @@ func stale(m *manifest.Manifest, endedAt string) bool {
 	return last.After(end)
 }
 
+// ProjectsRoot is the Claude Code projects directory as this process
+// sees it: $CLAUDE_CONFIG_DIR/projects, else ~/.claude/projects. The
+// hook records it on each job, because the daemon or drain that runs
+// the job may have a different environment.
+func ProjectsRoot() string {
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		return filepath.Join(d, "projects")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".claude", "projects")
+	}
+	return ""
+}
+
 // AllowedTranscript reports whether path is a regular .jsonl file whose
-// fully resolved path is under $CLAUDE_CONFIG_DIR/projects, or
-// $HOME/.claude/projects when that is unset. Summarize jobs only read
-// such files. ReadFile does not check this, because coal import reads
-// directories the user names.
-func AllowedTranscript(path string) bool {
+// fully resolved path is under one of: each root given, the
+// $CLAUDE_CONFIG_DIR/projects of this process when set, and
+// ~/.claude/projects. Summarize jobs only read such files. ReadFile does
+// not check this, because coal import reads directories the user names.
+func AllowedTranscript(path string, roots ...string) bool {
 	if !strings.HasSuffix(path, ".jsonl") {
 		return false
 	}
-	base := os.Getenv("CLAUDE_CONFIG_DIR")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			return false
-		}
-		base = filepath.Join(home, ".claude")
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		roots = append(roots, filepath.Join(d, "projects"))
 	}
-	root, err := filepath.EvalSymlinks(filepath.Join(base, "projects"))
-	if err != nil {
-		return false
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		roots = append(roots, filepath.Join(home, ".claude", "projects"))
 	}
 	real, err := filepath.EvalSymlinks(path)
-	if err != nil || !strings.HasPrefix(real, root+string(filepath.Separator)) || !strings.HasSuffix(real, ".jsonl") {
+	if err != nil || !strings.HasSuffix(real, ".jsonl") {
 		return false
 	}
-	fi, err := os.Stat(real)
-	return err == nil && fi.Mode().IsRegular()
+	if fi, err := os.Stat(real); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	for _, r := range roots {
+		if r == "" || !filepath.IsAbs(r) {
+			continue
+		}
+		if root, err := filepath.EvalSymlinks(r); err == nil && strings.HasPrefix(real, root+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Runner runs jobs in the background for the daemon, one run at a time,

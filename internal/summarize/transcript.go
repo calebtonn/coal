@@ -207,8 +207,8 @@ func (t *Transcript) LastPrompt() string {
 
 // FromTranscript is the deterministic extraction (ADR-016): the summary
 // is the first paragraph of the last assistant message, else the last
-// real user prompt cut to 300 runes; nextStep comes from a "Next step"
-// line in that message; files are the paths written, deduplicated, in
+// real user prompt cut to 300 runes when it passes capture.PickSummary,
+// else ""; nextStep comes from a "Next step" line in that message; files are the paths written, deduplicated, in
 // order. At most maxBytes are read from the end of the file.
 func FromTranscript(path string, maxBytes int64) (summary, nextStep string, files []string, err error) {
 	t, err := ReadFile(path, maxBytes)
@@ -216,8 +216,13 @@ func FromTranscript(path string, maxBytes int64) (summary, nextStep string, file
 		return "", "", nil, err
 	}
 	summary, nextStep = capture.ExtractState(t.LastAssistant)
+	// The prompt fallback must pass the summary filter (#11), so a
+	// trivial later session ("hello", "/exit") never replaces a good
+	// summary.
 	if summary == "" {
-		summary = Cut(t.LastPrompt(), capture.MaxStateSummary)
+		if _, ok := capture.PickSummary(t.LastPrompt()); ok {
+			summary = Cut(t.LastPrompt(), capture.MaxStateSummary)
+		}
 	}
 	return summary, nextStep, t.Files, nil
 }

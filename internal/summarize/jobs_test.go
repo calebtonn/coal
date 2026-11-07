@@ -273,3 +273,39 @@ func TestJobTranscriptMustBeAllowed(t *testing.T) {
 		t.Error("without CLAUDE_CONFIG_DIR only ~/.claude/projects counts")
 	}
 }
+
+// Fable review M11 pass 2, P1: the runner's environment may differ from
+// the hook's, so a root named by the job is honoured.
+func TestJobProjectsRootFromHook(t *testing.T) {
+	e := newEnv(t, twoLines)
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir()) // the daemon sees another config dir
+	t.Setenv("HOME", t.TempDir())
+	hookRoot := filepath.Dir(filepath.Dir(e.tr))
+	if AllowedTranscript(e.tr) || !AllowedTranscript(e.tr, hookRoot) {
+		t.Fatal("AllowedTranscript ignores or needs the extra root wrongly")
+	}
+	p := e.jobWith(func(j *Job) { j.ProjectsRoot = hookRoot })
+	if r := e.run(); r.Done != 1 || exists(p) {
+		t.Fatalf("job under the hook's root: %+v", r)
+	}
+	outside := write(t, user("/w", "a transcript outside every root"))
+	e.jobWith(func(j *Job) { j.TranscriptPath, j.ProjectsRoot = outside, hookRoot })
+	if r := e.run(); r.Failed != 1 {
+		t.Errorf("job outside every root: %+v", r)
+	}
+	if AllowedTranscript(e.tr, "relative/projects") {
+		t.Error("a relative root was honoured")
+	}
+}
+
+func TestProjectsRoot(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "/cfg")
+	if got := ProjectsRoot(); got != "/cfg/projects" {
+		t.Errorf("with CLAUDE_CONFIG_DIR: %q", got)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("HOME", "/home/x")
+	if got := ProjectsRoot(); got != "/home/x/.claude/projects" {
+		t.Errorf("without: %q", got)
+	}
+}

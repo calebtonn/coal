@@ -103,3 +103,14 @@ func TestReadFileRefusesSymlink(t *testing.T) {
 		t.Error("a symlinked transcript was read")
 	}
 }
+
+// Fable review M11 pass 2, P2: a trivial last prompt gives no summary.
+func TestFromTranscriptTrivialPrompt(t *testing.T) {
+	for _, prompt := range []string{"hello", "/exit"} {
+		p := write(t, user("/w", prompt)+assistant("/w", "m1", tool("Write", "file_path", "/w/x.md")))
+		summary, next, files, err := FromTranscript(p, 0)
+		if err != nil || summary != "" || next != "" || len(files) != 1 {
+			t.Errorf("%q: summary %q, next %q, files %v, %v", prompt, summary, next, files, err)
+		}
+	}
+}
