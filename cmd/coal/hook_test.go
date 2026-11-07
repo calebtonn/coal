@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -84,6 +85,16 @@ func TestHookSession(t *testing.T) {
 		t.Errorf("resume: %+v", res)
 	}
 
+	// Hooks never run git: the writes are marked pending for the daemon
+	// or the next CLI command to commit (ADR-014).
+	if _, err := os.Stat(filepath.Join(home, ".history-pending")); err != nil {
+		t.Errorf("no pending history marker: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".git", "HEAD")); err == nil {
+		if log, _ := exec.Command("git", "-C", home, "log", "--oneline").Output(); len(log) > 0 {
+			t.Errorf("a hook committed:\n%s", log)
+		}
+	}
 	a, err := app.Open(home)
 	if err != nil {
 		t.Fatal(err)

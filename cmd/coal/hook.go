@@ -17,6 +17,7 @@ import (
 	"github.com/calebtonn/coal/internal/marker"
 	"github.com/calebtonn/coal/internal/metrics"
 	"github.com/calebtonn/coal/internal/queue"
+	"github.com/calebtonn/coal/internal/store"
 	"github.com/calebtonn/coal/internal/summarize"
 )
 
@@ -102,7 +103,7 @@ func runHook(home, name string, stdin io.Reader) ([]byte, error) {
 	if e.Kind == capture.KindSessionEnd {
 		return nil, nil
 	}
-	f := &folder{home: home}
+	f := &folder{home: home, hook: true}
 	defer f.close()
 	if e.Kind != capture.KindSessionStart {
 		_, err := queue.Drain(home, f.apply, false)
@@ -149,9 +150,12 @@ func sessionManifest(a *app.App, e *capture.Event) *manifest.Manifest {
 	return marker.Match(e.Cwd, ms)
 }
 
-// folder opens the app only when there is something to fold.
+// folder opens the app only when there is something to fold. Inside a
+// hook it opens with deferred history, so no write runs git (ADR-014);
+// the daemon or the next CLI command commits what is pending.
 type folder struct {
 	home string
+	hook bool
 	a    *app.App
 }
 
@@ -159,7 +163,11 @@ func (f *folder) open() (*app.App, error) {
 	if f.a != nil {
 		return f.a, nil
 	}
-	a, err := app.Open(f.home)
+	var opts []store.Option
+	if f.hook {
+		opts = append(opts, store.WithDeferredHistory())
+	}
+	a, err := app.Open(f.home, opts...)
 	f.a = a
 	return a, err
 }
