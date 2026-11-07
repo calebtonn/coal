@@ -44,6 +44,7 @@ Try it: `make demo`, or follow `docs/poc/DEMO.md`. The one thing not run is a li
 - Final check by the lead at `e1fb4be`: race suite, vet and gofmt clean; web 19 tests and svelte-check clean; `make demo` passes twice; `make e2e` passes; no servers left running.
 
 - Upstream moved: Caleb pushed `c6f371d` to `main` after this branch was cut. It merges PR #10, accepts ADR-011 to ADR-015, fixes #1 to #4 in the docs and adds ADR-016 (capture lifecycle and resume). ADR-016 matches what the POC built: SessionEnd queues, extraction fallback, a banner plus context for resume, marker-first matching. It also adds a `coal resume` launcher the POC does not have. A test merge of `poc/go` with `origin/main` conflicts in six doc files only (CLAUDE.md, README.md, docs/02, 03, 05, 06) and in no code. Resolving that is a choice for Dave and Caleb.
+- M11 history (`7a1fb36`, `073ea98`): `store.WithDeferredHistory()` makes a write touch `.history-pending` instead of running git, and makes Open run no git process, for hooks (ADR-014 constraint). `(*Store).CommitPending(msg, quiet)` commits `manifests/` once the marker is quiet, under `.git.lock`, with a message naming up to five changed manifests. A non-deferred `app.Open` flushes what is pending, so every CLI command, the MCP server and import record hook writes. Without git on PATH nothing is marked and nothing fails. ADR-014 consequences updated; its status line is unchanged.
 
 ## In progress
 
