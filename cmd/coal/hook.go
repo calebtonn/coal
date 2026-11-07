@@ -17,6 +17,7 @@ import (
 	"github.com/calebtonn/coal/internal/marker"
 	"github.com/calebtonn/coal/internal/metrics"
 	"github.com/calebtonn/coal/internal/queue"
+	"github.com/calebtonn/coal/internal/summarize"
 )
 
 // hookEvents maps coal hook arguments to Claude Code hook event names.
@@ -218,6 +219,9 @@ func queueCmd() *cobra.Command {
 			}
 			failed, _ := filepath.Glob(filepath.Join(queue.Dir(home), "failed", "*.json"))
 			fmt.Fprintf(cmd.OutOrStdout(), "folded %d events\n", n)
+			if err := runSummarizeJobs(cmd); err != nil {
+				return err
+			}
 			if len(failed) > 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "%d events in queue/failed; see logs/coal.log\n", len(failed))
 			}
@@ -227,4 +231,25 @@ func queueCmd() *cobra.Command {
 	drain.Flags().BoolVar(&retry, "retry-failed", false, "move events in queue/failed back into the queue first")
 	q.AddCommand(drain)
 	return q
+}
+
+// runSummarizeJobs runs opt-in summarizer jobs (ADR-016). Only this
+// command and the daemon run them; hooks never do.
+func runSummarizeJobs(cmd *cobra.Command) error {
+	a, _, err := openApp("")
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	r, err := summarize.RunJobs(cmd.Context(), a)
+	if err != nil {
+		return err
+	}
+	if r.Done+r.Skipped+r.Failed > 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "summarized %d sessions, skipped %d the model recorded itself, %d failed\n", r.Done, r.Skipped, r.Failed)
+	}
+	if r.Busy {
+		fmt.Fprintln(cmd.ErrOrStderr(), "summarize jobs are running elsewhere")
+	}
+	return nil
 }
