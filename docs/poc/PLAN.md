@@ -217,6 +217,21 @@ Dave's order of 2026-11-04: ADR-011 to ADR-015 are accepted for the POC, and eve
 - Chat-app exports (claude.ai, ChatGPT) stay out of the POC
 - Accept: fixture transcripts produce one proposal per project directory with the first passing prompt as the summary
 
+### M11. Sync with Caleb's main (2026-11-06)
+
+`origin/main` moved after the POC branched: Caleb accepted ADR-011 to ADR-015 with constraints, added ADR-016 (capture lifecycle and resume), and rewrote F5, T08, T09 and the definition of done. Merged into `poc/go` in `c90e781`; where both sides edited the same lines, main's text won. The POC now implements what main specifies and it lacked:
+
+- `coal resume [--tool claude-code]` launches `claude` with a first prompt, so the first turn is the resume (ADR-016, DoD step 3b). The demo uses it, with a stand-in `claude` on PATH.
+- The banner reads `COAL: <summary>. Next: <nextStep>. <n> open questions.` (F5).
+- `SessionEnd` only queues; no drain and no summary work in that hook (F5, ADR-016). The queue worker, meaning the daemon tick, the next `SessionStart` or `coal queue drain`, extracts `state.summary` from the transcript (last user message, last assistant message, files touched) when the model recorded nothing.
+- `config.summarizer`: an opt-in headless model call over the transcript, run only by the daemon or `coal queue drain`, never inside a hook. Off by default.
+- ADR-014 constraints: commits never run inside a hook. Hooks leave a pending marker; the daemon commits debounced, and non-hook commands commit what is pending.
+- `markers: "project" | "none"` in `config.json` (ADR-013); with `none`, no `.coal` file is written and matching uses `contexts[]`.
+- `coal new` in a directory that already has a manifest creates a second one and makes it active; the marker holds the active id plus the list (ADR-013).
+- `PostToolUse` captures the extensions F5 lists (`.html`, `.md`, `.py`, `.ts`, `.tsx`), configurable as `captureExtensions`.
+
+Where the POC goes further than main and keeps it: the single-writer queue for every hook, the #11 summary filter, artifact versions, `rev`, the secret rules, import, rename, purge, log and stats.
+
 ## Issue map
 
 | Issue | Where it lands |
