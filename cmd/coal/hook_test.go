@@ -273,3 +273,26 @@ func TestSessionEndOnlyQueues(t *testing.T) {
 		t.Error("session-end opened the app")
 	}
 }
+
+func TestHookSkipsSummarizerSessions(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	t.Setenv("HOME", filepath.Join(base, "home"))
+	t.Setenv("COAL_SUMMARIZER", "1")
+	home, project := filepath.Join(base, "coal"), filepath.Join(base, "budget")
+	os.MkdirAll(filepath.Join(project, ".git"), 0o755)
+	os.WriteFile(filepath.Join(project, "budget.html"), []byte("x"), 0o644)
+	for _, s := range [][2]string{
+		{"session-start", "session-start.json"}, {"user-prompt-submit", "user-prompt-submit.json"},
+		{"post-tool-use", "post-tool-use-write.json"}, {"stop", "stop.json"}, {"session-end", "session-end.json"},
+	} {
+		if out, _ := hook(t, home, project, s[0], s[1]); out != "" {
+			t.Errorf("%s printed %q", s[0], out)
+		}
+	}
+	if _, err := os.Stat(home); err == nil {
+		t.Errorf("the data dir was touched: %s exists", home)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".coal")); err == nil {
+		t.Error("wrote a marker")
+	}
+}

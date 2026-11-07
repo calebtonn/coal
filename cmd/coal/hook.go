@@ -30,6 +30,10 @@ var hookEvents = map[string]string{
 	"session-end":        "SessionEnd",
 }
 
+// envSummarizer is set on the summarizer's own process, whose hooks
+// must capture nothing.
+const envSummarizer = "COAL_SUMMARIZER"
+
 // maxPayload caps hook stdin. Larger payloads are read to EOF and
 // dropped, so Claude Code never blocks writing to the hook.
 const maxPayload = 16 << 20
@@ -51,6 +55,13 @@ func hookCmd() *cobra.Command {
 		ValidArgs: []string{"session-start", "user-prompt-submit", "post-tool-use", "stop", "session-end"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			stdin := cmd.InOrStdin()
+			// The opt-in summarizer runs claude -p, which is itself a
+			// Claude Code session with these hooks. Capturing it would
+			// queue another summarize job at its end, in a loop.
+			if os.Getenv(envSummarizer) != "" {
+				io.Copy(io.Discard, stdin)
+				return nil
+			}
 			// Whatever happens, read stdin to EOF, never panic out, and
 			// exit 0: a hook must not fail the user's session. The
 			// recover is deferred first so it also covers the drain.
