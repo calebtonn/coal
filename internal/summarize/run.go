@@ -25,7 +25,17 @@ type Config struct {
 	Command            []string `json:"command"`
 	TimeoutSeconds     int      `json:"timeoutSeconds"`
 	MaxTranscriptBytes int64    `json:"maxTranscriptBytes"`
+
+	// WorkRoot holds the empty working directory made for each run.
+	// RunJobs sets it to the data dir's tmp/; empty means os.TempDir.
+	WorkRoot string `json:"-"`
 }
+
+// EnvSummarizer is set to 1 in the summarizer's environment. A summarizer
+// such as `claude -p` is itself a Claude Code session with the user's
+// hooks, so coal hook exits at once when it sees this, and the run never
+// queues another summarize job (Fable review M11, R1).
+const EnvSummarizer = "COAL_SUMMARIZER"
 
 // Defaults for unset Config fields.
 const (
@@ -92,7 +102,21 @@ func Run(ctx context.Context, cfg *Config, transcriptPath string) (summary, next
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.TimeoutSeconds)*time.Second)
 	defer cancel()
+	// Run in a fresh empty directory, so no project marker or context
+	// matches the summarizer's own session.
+	if cfg.WorkRoot != "" {
+		if err := os.MkdirAll(cfg.WorkRoot, 0o700); err != nil {
+			return "", "", err
+		}
+	}
+	work, err := os.MkdirTemp(cfg.WorkRoot, "summarizer-*")
+	if err != nil {
+		return "", "", err
+	}
+	defer os.RemoveAll(work)
 	cmd := exec.CommandContext(ctx, cfg.Command[0], cfg.Command[1:]...)
+	cmd.Dir = work
+	cmd.Env = append(os.Environ(), EnvSummarizer+"=1")
 	cmd.Stdin = io.MultiReader(strings.NewReader(Prompt), bytes.NewReader(body))
 	var out limited
 	cmd.Stdout, cmd.Stderr = &out, io.Discard

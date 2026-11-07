@@ -22,6 +22,7 @@ func script(t *testing.T, body string) string {
 }
 
 const okBody = `cat > "$1"
+printf '%s\n%s\n' "$(pwd)" "$COAL_SUMMARIZER" > "$1.env"
 printf 'Here you go.\n**Summary:** Added a spending chart by category.\nNext step: Add CSV export\n'`
 
 func TestRunPassesTranscriptOnStdin(t *testing.T) {
@@ -29,13 +30,25 @@ func TestRunPassesTranscriptOnStdin(t *testing.T) {
 	late := user("/w", "Add a spending chart by category please") + assistant("/w", "m1", text("Done."))
 	tr := write(t, early+strings.Repeat(assistant("/w", "pad", text(strings.Repeat("x", 100))), 50)+late)
 	stdin := filepath.Join(t.TempDir(), "stdin")
-	cfg := &Config{Command: []string{script(t, okBody), stdin}, TimeoutSeconds: 5, MaxTranscriptBytes: int64(len(late) + 50)}
+	root := t.TempDir()
+	cfg := &Config{Command: []string{script(t, okBody), stdin}, TimeoutSeconds: 5, MaxTranscriptBytes: int64(len(late) + 50), WorkRoot: root}
 	summary, next, err := Run(context.Background(), cfg, tr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if summary != "Added a spending chart by category." || next != "Add CSV export" {
 		t.Errorf("summary %q, next %q", summary, next)
+	}
+	// Fable review M11, R1: an empty working dir under WorkRoot, removed
+	// afterwards, and COAL_SUMMARIZER=1 so the user's hooks stand down.
+	env, _ := os.ReadFile(stdin + ".env")
+	lines := strings.Split(strings.TrimSpace(string(env)), "\n")
+	rroot, _ := filepath.EvalSymlinks(root)
+	if len(lines) != 2 || filepath.Dir(lines[0]) != rroot || !strings.HasPrefix(filepath.Base(lines[0]), "summarizer-") || lines[1] != "1" {
+		t.Errorf("env %q", lines)
+	}
+	if left, _ := os.ReadDir(root); len(left) != 0 {
+		t.Errorf("work dir left behind: %v", left)
 	}
 	got, _ := os.ReadFile(stdin)
 	if !strings.HasPrefix(string(got), Prompt) || !strings.Contains(string(got), "Add a spending chart") || strings.Contains(string(got), "EARLY-PROMPT") {

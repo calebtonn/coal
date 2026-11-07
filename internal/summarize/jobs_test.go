@@ -37,9 +37,24 @@ func newEnv(t *testing.T, body string) *env {
 	if err := a.Create(m, store.Op{Tool: "test"}); err != nil {
 		t.Fatal(err)
 	}
-	e := &env{t: t, a: a, id: m.ID, tr: write(t, user("/w", "SECRET-ISH transcript text")), ran: filepath.Join(t.TempDir(), "ran"), start: "2026-11-06T10:00:00Z"}
+	e := &env{t: t, a: a, id: m.ID, tr: projectTranscript(t, user("/w", "SECRET-ISH transcript text")), ran: filepath.Join(t.TempDir(), "ran"), start: "2026-11-06T10:00:00Z"}
 	e.config(map[string]any{"command": []string{script(t, `touch "$1"; cat >/dev/null; `+body), e.ran}, "timeoutSeconds": 1})
 	return e
+}
+
+// projectTranscript writes body under a fresh $CLAUDE_CONFIG_DIR/projects,
+// where AllowedTranscript accepts it.
+func projectTranscript(t *testing.T, body string) string {
+	t.Helper()
+	cfgDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfgDir)
+	dir := filepath.Join(cfgDir, "projects", "-w")
+	os.MkdirAll(dir, 0o700)
+	p := filepath.Join(dir, "s1.jsonl")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 // config merges summarizer into the store's config.json.
@@ -57,11 +72,15 @@ func (e *env) config(summarizer any) {
 }
 
 // job writes a job file the way capture's fold does.
-func (e *env) job() string {
+func (e *env) job() string { return e.jobWith(func(*Job) {}) }
+
+func (e *env) jobWith(edit func(*Job)) string {
 	dir := Dir(e.a.Store.Dir())
 	os.MkdirAll(dir, 0o700)
 	p := filepath.Join(dir, "claude-code_session_s1.json")
-	b, _ := json.Marshal(Job{ManifestID: e.id, SessionRef: "claude-code:session:s1", TranscriptPath: e.tr, StartedAt: e.start})
+	j := Job{ManifestID: e.id, SessionRef: "claude-code:session:s1", TranscriptPath: e.tr, StartedAt: e.start}
+	edit(&j)
+	b, _ := json.Marshal(j)
 	if err := os.WriteFile(p, b, 0o600); err != nil {
 		e.t.Fatal(err)
 	}
@@ -196,5 +215,61 @@ func TestRunnerKick(t *testing.T) {
 	}
 	if m, _ := e.a.Get(e.id); m.State.NextStep != "Add CSV export" {
 		t.Errorf("state %+v", m.State)
+	}
+}
+
+// setActivity sets state.lastActivityAt as a later session would.
+func (e *env) setActivity(at string) {
+	e.a.Update(e.id, 0, func(m *manifest.Manifest) error {
+		m.State.LastActivityAt, m.State.NextStep = at, "From session 2"
+		return nil
+	}, store.Op{Tool: "test"})
+}
+
+// Fable review M11, R2: an older session's job must not overwrite a
+// newer session's state, in either order.
+func TestStaleJobSkipped(t *testing.T) {
+	// Session 1's job waits while session 2 ends and sets state.
+	e := newEnv(t, twoLines)
+	p := e.jobWith(func(j *Job) { j.EndedAt = "2026-11-06T10:30:00Z" })
+	e.setActivity("2026-11-06T12:00:00Z")
+	if r := e.run(); r.Skipped != 1 || exists(p) || exists(e.ran) {
+		t.Fatalf("stale job: %+v, summarizer ran %v", r, exists(e.ran))
+	}
+	if m, _ := e.a.Get(e.id); m.State.NextStep != "From session 2" {
+		t.Errorf("newer state overwritten: %+v", m.State)
+	}
+
+	// The job runs before any later activity: it applies.
+	e = newEnv(t, twoLines)
+	e.setActivity("2026-11-06T10:30:00Z")
+	e.jobWith(func(j *Job) { j.EndedAt = "2026-11-06T10:30:00Z" })
+	if r := e.run(); r.Done != 1 {
+		t.Fatalf("current job: %+v", r)
+	}
+	if m, _ := e.a.Get(e.id); m.State.NextStep != "Add CSV export" {
+		t.Errorf("state %+v", m.State)
+	}
+}
+
+func TestJobTranscriptMustBeAllowed(t *testing.T) {
+	e := newEnv(t, twoLines)
+	outside := write(t, user("/w", "a transcript outside the projects dir"))
+	link := filepath.Join(filepath.Dir(e.tr), "link.jsonl")
+	os.Symlink(outside, link)
+	for _, tr := range []string{outside, link, filepath.Join(filepath.Dir(e.tr), "notes.txt")} {
+		os.WriteFile(filepath.Join(filepath.Dir(e.tr), "notes.txt"), []byte("x"), 0o600)
+		p := e.jobWith(func(j *Job) { j.TranscriptPath = tr })
+		if r := e.run(); r.Failed != 1 || exists(p) || exists(e.ran) {
+			t.Errorf("%s: %+v, summarizer ran %v", tr, r, exists(e.ran))
+		}
+	}
+	if !AllowedTranscript(e.tr) {
+		t.Error("a transcript under projects/ was refused")
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("HOME", filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(e.tr)))))
+	if AllowedTranscript(e.tr) {
+		t.Error("without CLAUDE_CONFIG_DIR only ~/.claude/projects counts")
 	}
 }

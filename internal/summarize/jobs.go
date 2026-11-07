@@ -28,6 +28,9 @@ type Job struct {
 	SessionRef     string `json:"sessionRef"`
 	TranscriptPath string `json:"transcriptPath"`
 	StartedAt      string `json:"startedAt"`
+	// EndedAt is when the session ended. A job whose session ended
+	// before the manifest's latest activity is stale and skipped.
+	EndedAt string `json:"endedAt,omitempty"`
 }
 
 // Dir is where jobs wait. Hook drains read only regular files directly
@@ -51,6 +54,7 @@ func RunJobs(ctx context.Context, a *app.App) (Result, error) {
 	if err != nil || cfg == nil {
 		return r, err
 	}
+	cfg.WorkRoot = filepath.Join(home, "tmp")
 	dir := Dir(home)
 	ents, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -123,11 +127,14 @@ func runJob(ctx context.Context, a *app.App, cfg *Config, path string) (bool, er
 	if j.ManifestID == "" || j.TranscriptPath == "" {
 		return false, errors.New("job has no manifest id or transcript path")
 	}
+	if !AllowedTranscript(j.TranscriptPath) {
+		return false, errors.New("transcript path is not a .jsonl file under the Claude Code projects directory")
+	}
 	m, err := a.Get(j.ManifestID)
 	if err != nil {
 		return false, err
 	}
-	if recorded(m, j.StartedAt) {
+	if recorded(m, j.StartedAt) || stale(m, j.EndedAt) {
 		return false, nil
 	}
 	summary, next, err := Run(ctx, cfg, j.TranscriptPath)
@@ -137,7 +144,7 @@ func runJob(ctx context.Context, a *app.App, cfg *Config, path string) (bool, er
 	applied := false
 	_, err = a.Update(j.ManifestID, 0, func(m *manifest.Manifest) error {
 		// The model may have recorded state while the summarizer ran.
-		if recorded(m, j.StartedAt) {
+		if recorded(m, j.StartedAt) || stale(m, j.EndedAt) {
 			return store.ErrNoChange
 		}
 		before := m.State
@@ -170,6 +177,50 @@ func recorded(m *manifest.Manifest, startedAt string) bool {
 		return st.At >= startedAt
 	}
 	return !at.Before(start)
+}
+
+// stale reports whether activity on m happened after the job's session
+// ended, so a later session's state must not be overwritten by an older
+// one (Fable review M11, R2). A job without endedAt is never stale.
+func stale(m *manifest.Manifest, endedAt string) bool {
+	if endedAt == "" {
+		return false
+	}
+	last, err1 := time.Parse(time.RFC3339, m.State.LastActivityAt)
+	end, err2 := time.Parse(time.RFC3339, endedAt)
+	if err1 != nil || err2 != nil {
+		return m.State.LastActivityAt > endedAt
+	}
+	return last.After(end)
+}
+
+// AllowedTranscript reports whether path is a regular .jsonl file whose
+// fully resolved path is under $CLAUDE_CONFIG_DIR/projects, or
+// $HOME/.claude/projects when that is unset. Summarize jobs only read
+// such files. ReadFile does not check this, because coal import reads
+// directories the user names.
+func AllowedTranscript(path string) bool {
+	if !strings.HasSuffix(path, ".jsonl") {
+		return false
+	}
+	base := os.Getenv("CLAUDE_CONFIG_DIR")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return false
+		}
+		base = filepath.Join(home, ".claude")
+	}
+	root, err := filepath.EvalSymlinks(filepath.Join(base, "projects"))
+	if err != nil {
+		return false
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil || !strings.HasPrefix(real, root+string(filepath.Separator)) || !strings.HasSuffix(real, ".jsonl") {
+		return false
+	}
+	fi, err := os.Stat(real)
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // Runner runs jobs in the background for the daemon, one run at a time,

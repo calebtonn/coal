@@ -152,7 +152,11 @@ func (t *Transcript) add(raw []byte) bool {
 		case b.Type == "text" && strings.TrimSpace(b.Text) != "":
 			texts = append(texts, b.Text)
 		case l.Type == "assistant" && b.Type == "tool_use" && writeTools[b.Name]:
-			t.wrote(b.Input.FilePath + b.Input.NotebookPath)
+			p := b.Input.FilePath
+			if p == "" {
+				p = b.Input.NotebookPath
+			}
+			t.wrote(p)
 		}
 	}
 	text := strings.Join(texts, "\n\n")

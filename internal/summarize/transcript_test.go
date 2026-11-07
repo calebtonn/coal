@@ -43,7 +43,8 @@ func TestFromTranscript(t *testing.T) {
 		"not json\n" +
 		user(cwd, "Now add a chart by category") +
 		assistant(cwd, "m2", tool("Edit", "file_path", "index.html"), tool("MultiEdit", "file_path", cwd+"/app.js"),
-			tool("NotebookEdit", "notebook_path", cwd+"/a.ipynb"), tool("Read", "file_path", cwd+"/README.md")) +
+			tool("NotebookEdit", "notebook_path", cwd+"/a.ipynb"),
+			map[string]any{"type": "tool_use", "name": "NotebookEdit", "input": map[string]any{"file_path": cwd + "/b.ipynb", "notebook_path": cwd + "/b.ipynb"}}, tool("Read", "file_path", cwd+"/README.md")) +
 		user(cwd, "<system-reminder>injected, not typed</system-reminder>") +
 		assistant(cwd, "m3", text("Added a spending chart by category.")) +
 		assistant(cwd, "m3", text("Next step: Add CSV export"))
@@ -55,7 +56,7 @@ func TestFromTranscript(t *testing.T) {
 	if summary != "Added a spending chart by category." || next != "Add CSV export" {
 		t.Errorf("summary %q, next %q", summary, next)
 	}
-	want := []string{cwd + "/index.html", cwd + "/app.js", cwd + "/a.ipynb"}
+	want := []string{cwd + "/index.html", cwd + "/app.js", cwd + "/a.ipynb", cwd + "/b.ipynb"}
 	if !slices.Equal(files, want) {
 		t.Errorf("files %v", files)
 	}
