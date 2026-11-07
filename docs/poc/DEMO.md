@@ -99,8 +99,27 @@ In the session:
 
 To remove the hooks: `.sandbox/bin/coal adapter uninstall claude-code --settings .sandbox/claude-config/settings.json`. A copy of the previous settings is kept next to the file as `settings.json.bak`.
 
+## Optional: model summaries
+
+By default, COAL makes no model calls. A session's state comes from the model's own `coal_update_state` calls, or, when there were none, from the transcript: the last assistant message, the last user prompt and the files written.
+
+To have a model summarize each session instead, add `summarizer` to `config.json` in the data directory:
+
+```json
+{
+  "summarizer": {
+    "command": ["claude", "-p", "--output-format", "text"],
+    "timeoutSeconds": 120,
+    "maxTranscriptBytes": 400000
+  }
+}
+```
+
+This makes a model call that you have configured, using the command you name and whatever account it uses. COAL runs the command with no shell. It sends a fixed prompt and the last `maxTranscriptBytes` of the transcript on stdin, never on the command line. It reads back two lines, `Summary:` and `Next step:`, and writes them to `state.summary` and `state.nextStep`. It never changes the intent summary.
+
+Jobs run only in the daemon and in `coal queue drain`, never inside a hook. A session where the model recorded its own state is skipped. A failed run, a timeout or output without a `Summary:` line writes nothing. The job moves to `queue/summarize/failed/`, and one line goes to `logs/coal.log` without any transcript text. Remove the key, or set it to `false`, to turn the summarizer off.
+
 ## Not in the POC yet
 
 - Import from chat apps such as claude.ai and ChatGPT. Only Claude Code transcripts on disk are covered (M10).
 - Cursor and Codex adapters. The capture contract (ADR-011) is ready for them, but only Claude Code is wired.
-- A model summarizer over the transcript (#2). Summaries come from the user's first prompt, and state comes from the model's `coal_update_state` calls or from the last assistant message.
