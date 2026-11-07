@@ -460,10 +460,12 @@ func TestSummarizeJob(t *testing.T) {
 	if job.ManifestID != v.all()[0].ID || job.SessionRef != capture.SessionRef(sidB) || job.StartedAt == "" || !strings.HasSuffix(job.TranscriptPath, ".jsonl") {
 		t.Errorf("job: %+v", job)
 	}
-	for _, c := range []string{`{"summarizer": null}`, `{"summarizer": false}`, `{}`, `not json`} {
-		if os.WriteFile(filepath.Join(v.a.Store.Dir(), "config.json"), []byte(c), 0o600); LoadConfig(v.a.Store.Dir()).Summarizer {
-			t.Errorf("%s counts as a summarizer", c)
-		}
+	// No job when the summarizer is off or the model recorded state.
+	os.Remove(files[0])
+	writeConfig(t, v, `{"summarizer": null}`)
+	v.send("session-end.json", "SessionEnd", asB)
+	if files, _ := filepath.Glob(filepath.Join(summarize.Dir(v.a.Store.Dir()), "*.json")); len(files) != 0 {
+		t.Errorf("job with the summarizer off: %v", files)
 	}
 }
 
@@ -524,5 +526,30 @@ func TestTranscriptUserFallback(t *testing.T) {
 	v.send("session-end.json", "SessionEnd", func(e *capture.Event) { e.TranscriptPath = path })
 	if m := v.all()[0]; m.State.Summary != "Please make the totals row bold and right aligned" || m.State.NextStep != "" {
 		t.Errorf("state: %+v", m.State)
+	}
+}
+
+func TestLateSummarizerStampDoesNotHideNextSession(t *testing.T) {
+	v := setup(t)
+	v.write("budget.html", "x")
+	// Session A runs and ends with its own extraction.
+	v.session1()
+	id := v.all()[0].ID
+	// Session B starts. Then the summarizer finishes A's job and stamps
+	// the state, after B's start.
+	v.send("session-start-resume.json", "SessionStart", nil)
+	v.a.Update(id, 0, func(m *manifest.Manifest) error {
+		m.State.Summary = "Summarizer's account of session A."
+		manifest.StampState(m, summarize.Tool)
+		return nil
+	}, op("test"))
+	v.send("stop.json", "Stop", func(e *capture.Event) {
+		asB(e)
+		e.LastAssistantMessage = "Added CSV export.\n\nNext step: add charts"
+	})
+	v.send("session-end.json", "SessionEnd", asB)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != "Added CSV export." || m.State.NextStep != "add charts" {
+		t.Errorf("B's extraction was hidden by the summarizer's stamp: %+v", m.State)
 	}
 }

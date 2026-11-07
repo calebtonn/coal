@@ -301,22 +301,43 @@ func closeOut(a *app.App, s *Session) error {
 	} else if err != nil {
 		return err
 	}
-	if st, ok := manifest.StateStampOf(m); ok && st.At >= s.StartedAt {
+	// A stamp from coal_update_state or a PATCH since the session began
+	// means the model recorded state itself. The summarizer's own stamps
+	// do not count, or a late run for one session would hide the next.
+	if st, ok := manifest.StateStampOf(m); ok && st.At >= s.StartedAt && st.RecordedBy != summarize.Tool {
 		s.RecordedByModel = true
-	}
-	if s.RecordedByModel {
 		return nil
-	}
-	if LoadConfig(a.Store.Dir()).Summarizer {
-		if err := queueSummarize(a, s); err != nil {
-			a.Store.Log("capture: summarize job for %s: %v", s.SessionRef, err)
-		}
 	}
 	sum, next := extract(a, s)
-	if sum == "" && next == "" {
-		return nil
+	if sum != "" || next != "" {
+		if err := applyState(a, s, sum, next); err != nil {
+			return err
+		}
 	}
-	_, err = a.Update(s.ManifestID, 0, func(m *manifest.Manifest) error {
+	queueSummarizer(a, s)
+	return nil
+}
+
+// queueSummarizer asks the daemon's opt-in summarizer to improve on the
+// extraction, when config.summarizer is set. Capture runs nothing
+// (ADR-016). Errors are logged; the extraction already landed.
+func queueSummarizer(a *app.App, s *Session) {
+	cfg, err := summarize.LoadConfig(a.Store.Dir())
+	if err != nil {
+		a.Store.Log("capture: summarizer config: %v", err)
+	}
+	if cfg == nil {
+		return
+	}
+	j := summarize.Job{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt}
+	if err := queueJob(a.Store.Dir(), j); err != nil {
+		a.Store.Log("capture: summarize job for %s: %v", s.SessionRef, err)
+	}
+}
+
+// applyState writes the extracted state, never intent.summary.
+func applyState(a *app.App, s *Session, sum, next string) error {
+	_, err := a.Update(s.ManifestID, 0, func(m *manifest.Manifest) error {
 		if sum != "" {
 			m.State.Summary = sum
 		}
@@ -361,6 +382,9 @@ func closeStale(a *app.App, current string, now time.Time) error {
 	return nil
 }
 
+// MaxTranscript is how much of the end of a transcript extraction reads.
+const MaxTranscript = 2 << 20
+
 // MaxFilesTouched caps the file names appended to state.summary.
 const MaxFilesTouched = 5
 
@@ -379,7 +403,7 @@ func extract(a *app.App, s *Session) (summary, nextStep string) {
 	if _, err := os.Lstat(s.TranscriptPath); err != nil && s.LastAssistantMessage != "" {
 		return summary, nextStep
 	}
-	tsum, tnext, files, err := summarize.FromTranscript(s.TranscriptPath, summarize.DefaultMaxTranscriptBytes)
+	tsum, tnext, files, err := summarize.FromTranscript(s.TranscriptPath, MaxTranscript)
 	if err != nil {
 		a.Store.Log("capture: transcript for %s: %v", s.SessionRef, err)
 		return summary, nextStep
@@ -411,15 +435,15 @@ func baseNames(paths []string, n int) []string {
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
-// queueSummarize writes queue/summarize/<sessionRef>.json atomically for
-// the daemon's opt-in summarizer; capture runs nothing (ADR-016). A
-// later job for the same session replaces the earlier one.
-func queueSummarize(a *app.App, s *Session) error {
-	dir := summarize.Dir(a.Store.Dir())
+// queueJob writes j to queue/summarize/<sessionRef>.json through a temp
+// file and a rename, so the runner never reads half a job. A later job
+// for the same session replaces the earlier one.
+func queueJob(home string, j summarize.Job) error {
+	dir := summarize.Dir(home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	b, err := json.Marshal(summarize.Job{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt})
+	b, err := json.Marshal(j)
 	if err != nil {
 		return err
 	}
@@ -432,7 +456,7 @@ func queueSummarize(a *app.App, s *Session) error {
 		err = cerr
 	}
 	if err == nil {
-		err = os.Rename(f.Name(), filepath.Join(dir, unsafeName.ReplaceAllString(s.SessionRef, "_")+".json"))
+		err = os.Rename(f.Name(), filepath.Join(dir, unsafeName.ReplaceAllString(j.SessionRef, "_")+".json"))
 	}
 	if err != nil {
 		os.Remove(f.Name())

@@ -1,7 +1,6 @@
 package fold
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -17,24 +16,21 @@ const (
 // DefaultExtensions are the file types PostToolUse captures (F5).
 var DefaultExtensions = []string{".html", ".md", ".py", ".ts", ".tsx"}
 
-// Config is the part of config.json that capture reads.
+// Config is the part of config.json that capture reads. The summarizer
+// setting belongs to internal/summarize.
 type Config struct {
 	// Markers is "project" (write .coal) or "none" (never write one).
 	Markers string
 	// CaptureExtensions lists lowercase extensions with a leading dot.
 	CaptureExtensions []string
-	// Summarizer is set when config.summarizer holds anything but null
-	// or false; the daemon runs it, capture only queues jobs.
-	Summarizer bool
 }
 
 // LoadConfig reads capture settings from home/config.json. A missing or
 // unreadable file, or a missing key, gives the defaults.
 func LoadConfig(home string) Config {
 	var raw struct {
-		Markers           string          `json:"markers"`
-		CaptureExtensions []string        `json:"captureExtensions"`
-		Summarizer        json.RawMessage `json:"summarizer"`
+		Markers           string   `json:"markers"`
+		CaptureExtensions []string `json:"captureExtensions"`
 	}
 	if b, err := os.ReadFile(filepath.Join(home, "config.json")); err == nil {
 		_ = json.Unmarshal(b, &raw)
@@ -54,8 +50,6 @@ func LoadConfig(home string) Config {
 			}
 		}
 	}
-	s := bytes.TrimSpace(raw.Summarizer)
-	c.Summarizer = len(s) > 0 && !bytes.Equal(s, []byte("null")) && !bytes.Equal(s, []byte("false"))
 	return c
 }
 
