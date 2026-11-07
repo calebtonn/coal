@@ -4,26 +4,26 @@ Thanks for looking. COAL is being built in the open, and this page is about the 
 
 ## Where the project is
 
-COAL is pre-alpha. `main` holds the spec, the decisions behind it, and an ordered build plan (`docs/05-MVP-TASKS.md`). A proof of concept on the `poc/go` branch, written in Go, runs the demo end to end from a recorded Claude Code session, not a live one. It has no `coal resume` yet, it does not build from a fresh clone, and it is not merged. It is a spike to test the design: the stack for the first release is the one in `CLAUDE.md` unless an ADR changes it. The MVP is built in the plan's order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, the project continues to Phase 2, changes direction, or stops. The bar is in the README: if COAL does not get used unprompted at least five times that week, the project stops. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
+COAL is pre-alpha. `main` holds the spec, the decisions behind it, an ordered build plan (`docs/05-MVP-TASKS.md`), and the Go implementation. That implementation began as a proof of concept on the `poc/go` branch; ADR-018 adopted it as the Phase 1 stack and it was merged on 2026-11-07. It builds from a fresh clone with Go 1.27 and was run live once, on macOS on 2026-11-07: capture, state recorded by the model over MCP, the resume offer in a plain new session, and `coal resume` all worked. The web UI does not build outside the maintainers' machines yet, because `web/` depends on a package that is not published; the binary builds without it and serves a placeholder page. Known bugs, including three Go test packages that fail on macOS, are open issues. The rest of the MVP is built in the plan's order, one task at a time. At the end of the MVP there is a decision gate (task T14): after a week of real use, the project continues to Phase 2, changes direction, or stops. The bar is in the README: if COAL does not get used unprompted at least five times that week, the project stops. If it stops, the repo is archived and everything in it stays available under Apache 2.0.
 
 ## What helps now
 
 - Read `docs/02-SPEC.md`, `docs/04-INTENT-MANIFEST.md` and `docs/06-DECISIONS.md`, and open an issue for anything that is wrong, unclear, or contradicts another doc. Say where (file and section), what the problem is, and what you would change. Issues #1 to #9 are good examples.
-- Look through the proof of concept on `poc/go` and open an issue where it disagrees with the spec, or where the code does something the docs do not say.
+- Look through `cmd/` and `internal/` and open an issue where the code disagrees with the spec, or where it does something the docs do not say.
 - If you think the design should change, open a pull request that adds an ADR to `docs/06-DECISIONS.md` with status Proposed. Say what problem it solves and what you considered instead. PR #10 is an example.
 - If you would write manifests from another tool, say so in an issue before you build anything. A second writer is what the format needs most.
 
 ## What does not help yet
 
 - Pull requests that build MVP tasks out of order, or that nobody asked for. Ask in an issue first.
-- Code for Phases 2 to 4 (session import, adapters for other tools, browser capture, semantic search, sync, teams). It starts after the decision gate.
-- Changes to the fixed stack in `CLAUDE.md`, or splitting the two packages further.
+- Code for Phases 2 to 4 (session import, adapters for other tools, browser capture, semantic search, sync, teams). It starts after the decision gate. `coal import claude-code` already exists as a spike; it stays as it is until the gate.
+- Changes to the fixed stack in `CLAUDE.md` (ADR-018), or splitting the one binary into more modules or packages than `CLAUDE.md` lists.
 
 ## House rules
 
 - Prose in docs and UI copy is plain and direct, with no em-dashes.
 - COAL is a record of work. Do not call it memory in UI copy, tool descriptions or docs (ADR-008). `docs/01-THESIS.md` is the one exception: it uses the word to place COAL among memory systems.
-- `spec/intent-manifest.schema.json` is generated from the Zod schema once that exists (T02). Change the Zod source, not the JSON.
+- `spec/intent-manifest.schema.json` is the source of truth. The web validator is generated from it with `bun run gen:validator` in `web/`, and a test fails if the two drift. Change the schema, then regenerate.
 - Never delete user data, never bind to anything but `127.0.0.1`, and never add telemetry or network calls the user did not configure.
 
 ## Using AI tools

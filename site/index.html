@@ -523,7 +523,7 @@ footer .right { margin-left: auto; }
           <a class="btn primary" href="#level-1">Enter the mine <svg aria-hidden="true"><use href="#i-down"/></svg></a>
           <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/docs/02-SPEC.md"><svg aria-hidden="true"><use href="#i-github"/></svg>Read the spec</a>
         </div>
-        <p class="note">We are building it in the open. A proof of concept runs the demo from a recorded Claude Code session, from capture to the resume line. There is nothing to install yet. The first release captures from Claude Code only, and anything else you add by hand.</p>
+        <p class="note">We are building it in the open. The implementation runs the demo from a recorded Claude Code session, from capture to the resume line, and has been run against one live session. There is nothing to install yet. The first release captures from Claude Code only, and anything else you add by hand.</p>
       </div>
       <div class="headframe-wrap" aria-hidden="true">
         <svg class="headframe" viewBox="0 0 320 300" role="presentation">
@@ -646,7 +646,7 @@ footer .right { margin-left: auto; }
             <div class="seam" style="background:#3fb0aa"></div>
             <code class="field" style="color:#1d6b65">artifacts[]</code>
             <h3>The artifacts</h3>
-            <p>Pages, scripts and docs, copied in and addressed by their SHA-256 hash, so the record survives a moved file or a deleted chat. Each one notes which tool and model made it.</p>
+            <p>Pages, scripts and docs, copied in and addressed by their SHA-256 hash, so the record survives a moved file or a deleted chat. By default that means HTML, Markdown, Python and TypeScript; the list is a setting. Each one notes which tool and model made it.</p>
           </article>
           <article class="panel card reveal">
             <div class="seam" style="background:#2e3a52"></div>
@@ -666,13 +666,13 @@ footer .right { margin-left: auto; }
           <h2 id="l3">It writes itself while you work.</h2>
           <p class="intro">Claude Code runs hooks at fixed points in a session. COAL listens to them. You do not fill in anything.</p>
           <p class="aside">Claude Code is the only tool in the first release. Cursor, Codex CLI and Gemini CLI have hooks too, so each can get a small adapter that feeds the same capture contract.</p>
-          <p class="aside">Pages made in claude.ai or ChatGPT are not captured. In the first release you add them by hand with <code>coal add</code>. Importing session logs and chat exports is the first Phase 2 item.</p>
+          <p class="aside">Pages made in claude.ai or ChatGPT are not captured. In the first release you add them by hand with <code>coal add</code>. Importing Claude Code session logs exists as a first version, <code>coal import claude-code</code>. Importing chat exports is the Phase 2 item.</p>
         </div>
         <ol class="panel timeline reveal">
           <li><span class="dot" aria-hidden="true"></span><code>SessionStart</code><p>COAL finds the record for this folder and puts the next step on screen.</p></li>
           <li><span class="dot" aria-hidden="true"></span><code>PostToolUse</code><p>Claude writes <code>budget.html</code>. COAL registers it as an artifact. On the first write it creates the record, using your first message as the summary, and drops a small <code>.coal</code> marker in the project.</p></li>
           <li><span class="dot" aria-hidden="true"></span><code>Stop</code><p>After each turn, COAL updates the last activity time and nothing else, so the hook stays quick.</p></li>
-          <li><span class="dot" aria-hidden="true"></span><code>SessionEnd</code><p>A job is queued and the hook returns at once. If Claude did not record the next step during the session, a background worker writes a short summary from the transcript.</p></li>
+          <li><span class="dot" aria-hidden="true"></span><code>SessionEnd</code><p>A job is queued and the hook returns at once. If Claude did not record the next step during the session, COAL extracts a short summary and next step from the transcript when the queue is next folded: at your next session start, or within seconds if <code>coal serve</code> is running.</p></li>
         </ol>
       </div>
     </section>
@@ -776,7 +776,7 @@ footer .right { margin-left: auto; }
           </figure>
           <ul class="notes">
             <li class="panel reveal"><b>intent.source</b><span>Who wrote the summary: you or a model. Search ranks your own words first.</span></li>
-            <li class="panel reveal"><b>artifacts[].hash</b><span>SHA-256 of the copy in <code>~/.coal/artifacts/</code>. The original path is kept too, but it can go stale.</span></li>
+            <li class="panel reveal"><b>artifacts[].hash</b><span>SHA-256 of the copy in <code>~/.coal/artifacts/</code>. A version whose body was not copied (possible secret, too large, purged) keeps a salted blind hash and a skipped reason instead. The original path is kept too, but it can go stale.</span></li>
             <li class="panel reveal"><b>state.nextStep</b><span>The line every resume starts from.</span></li>
             <li class="panel reveal"><b>contexts[]</b><span>Where this work lives. When a project has no <code>.coal</code> marker, SessionStart uses it to find the record.</span></li>
             <li class="panel reveal"><b>provenance</b><span>Which tool and model wrote the record. It never stores tokens or secrets.</span></li>
@@ -791,7 +791,7 @@ footer .right { margin-left: auto; }
         <div class="reveal">
           <div class="sign"><span class="bolt"></span>Level 7<span class="depth">−800 m</span><span class="bolt"></span></div>
           <h2 id="l7">Nothing about it locks you in.</h2>
-          <p class="intro">Every manifest is a JSON file and every artifact is a plain copy of the original, all under <code>~/.coal/</code>. None of it needs COAL to open.</p>
+          <p class="intro">Every manifest is a JSON file and every stored artifact is a plain copy of the original, all under <code>~/.coal/</code>. None of it needs COAL to open.</p>
         </div>
         <div class="rules reveal">
           <span class="rb" style="top:10px;left:10px"></span><span class="rb" style="top:10px;right:10px"></span>
@@ -801,7 +801,7 @@ footer .right { margin-left: auto; }
             <li><b>Files are the truth.</b> Plain JSON is the record. The search index is SQLite and can be deleted and rebuilt from the files.</li>
             <li><b>Your words first.</b> The summary is what you typed. A model can suggest a better one, but it goes in a separate field unless you say yes.</li>
             <li><b>No telemetry.</b> No network calls you did not set up yourself. The daemon listens on 127.0.0.1 only.</li>
-            <li><b>Never deletes.</b> Remove means move to the trash folder. When git is installed, every change to a record is kept in its history.</li>
+            <li><b>Never deletes.</b> Remove means move to the trash folder. The one exception is <code>coal purge</code>, which deletes an artifact body that holds a secret after you confirm; the record stays. When git is installed, every CLI or MCP change to a record is a commit, and each session's capture is committed as a batch.</li>
             <li><b>Open, all of it.</b> Apache 2.0: the schema, the library, the CLI and every adapter. No paid tier.</li>
           </ol>
         </div>
@@ -818,7 +818,7 @@ footer .right { margin-left: auto; }
         </div>
         <div class="strata reveal">
           <div class="stratum"><span class="when">Phase 1</span><div><h3>Record</h3><p>Capture from Claude Code, find from any MCP tool, resume in the next session.</p></div><span class="badge now">In progress</span></div>
-          <div class="stratum"><span class="when">Phase 2</span><div><h3>Reach</h3><p>Import from session logs and chat exports, adapters for Cursor and Codex, semantic search with a local model.</p></div><span class="badge">Next</span></div>
+          <div class="stratum"><span class="when">Phase 2</span><div><h3>Reach</h3><p>Import from chat exports (a first version of import from Claude Code session logs already exists), adapters for Cursor and Codex, semantic search with a local model.</p></div><span class="badge">Next</span></div>
           <div class="stratum"><span class="when">Phase 3</span><div><h3>Attention</h3><p>Surface the right record at the right time, by rules you can read and edit.</p></div><span class="badge">Later</span></div>
           <div class="stratum"><span class="when">Phase 4</span><div><h3>Portability</h3><p>Spec v1.0 with a second implementer, encrypted sync between your devices.</p></div><span class="badge">Later</span></div>
         </div>
@@ -831,11 +831,11 @@ footer .right { margin-left: auto; }
         <div class="sign reveal"><span class="bolt"></span>The seam<span class="depth">−1000 m</span><span class="bolt"></span></div>
         <div class="lump reveal"><img src="assets/icon-512.png" alt="The COAL logo: a lump of coal cracked open with a diamond inside" width="300" height="300" loading="lazy" decoding="async"></div>
         <h2 id="l9" class="reveal">We are building it. Come join us.</h2>
-        <p class="intro reveal">A proof of concept on the <code>poc/go</code> branch, written in Go, runs the demo from a recorded Claude Code session: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and the web UI. It has not been run against a live session, it has no <code>coal resume</code> yet, and it does not build from a fresh clone. Read the spec, look through the code, and open an issue for anything that is wrong or unclear.</p>
+        <p class="intro reveal">The proof of concept, written in Go by a collaborator, was adopted as the implementation (ADR-018) and merged. It runs the demo from a recorded Claude Code session and has been run against one live Claude Code session: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and <code>coal resume</code>. The web UI builds only with a package that is not published yet. Read the spec, look through the code, and open an issue for anything that is wrong or unclear.</p>
         <p class="found-msg" id="found-msg" aria-live="polite">There are 9 diamonds in the walls on the way down.</p>
         <div class="ctas reveal">
           <a class="btn primary" href="https://github.com/calebtonn/coal/blob/main/docs/02-SPEC.md"><svg aria-hidden="true"><use href="#i-github"/></svg>Read the spec</a>
-          <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/poc/go/docs/poc/STATUS.md">See the proof of concept</a>
+          <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/docs/poc/STATUS.md">See the proof of concept</a>
           <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/CONTRIBUTING.md">How to help</a>
         </div>
       </div>

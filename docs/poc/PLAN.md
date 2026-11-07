@@ -32,7 +32,7 @@ One working end-to-end demo, all local and sandboxed:
 
 **Deviation from the review.** The review recommends Vite and React for the UI. Dave asked on 2026-11-04 for the frontend framework from his GitHub account, `@davenicoll/web-framework`, which is Svelte 5 on Vite and Bun. The UI uses it instead of React. It still builds with Vite, embeds with `go:embed`, and validates with Ajv, so nothing else in the plan changes.
 
-The TypeScript workspace files from the original scaffold (`package.json`, `pnpm-workspace.yaml`, `packages/`) stay untouched. The POC lives beside them.
+The TypeScript workspace files from the original scaffold (`package.json`, `pnpm-workspace.yaml`, `packages/`) stayed untouched on `poc/go`; the POC lived beside them. ADR-018 (2026-11-07) removed them when the POC was adopted on `main`.
 
 ## Layout
 

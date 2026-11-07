@@ -1,6 +1,6 @@
 # Intent Manifest Specification v0.1
 
-Status: Draft. The schema file is `spec/intent-manifest.schema.json`. Examples are in `spec/examples/`.
+Status: Draft. Version 0.1 freezes at the Phase 1 retro (T14); until then additive changes land in 0.1 (ADR-019). The schema file is `spec/intent-manifest.schema.json`. Examples are in `spec/examples/`.
 
 ## Purpose
 
@@ -134,7 +134,7 @@ A **store** conforms if a user can retrieve every manifest and every referenced 
 
 ## Open questions for v1.0
 
-- Should `intent` support hierarchy natively, or is `links[rel=partOf]` enough?
-- How should artifacts larger than a few MB be handled (reference only, no copy)?
+- Should `intent` support hierarchy natively, or is `links[rel=partOf]` enough? ADR-017 (Places, Proposed) answers this with `links[rel=partOf]` plus an optional manifest `kind` (`project` or `area`). Proposed, not decided.
+- How should artifacts larger than a few MB be handled (reference only, no copy)? ADR-017 (Proposed) proposes versions kept by reference, built on `versions[]`: such a version records `uri`, `size` and a new `modifiedAt`, sets `skipped: "reference"`, and has no `hash`, so `hash` would become optional on a version only when `skipped` is set. Proposed, not decided; the schema does not carry these fields yet.
 - Signing: should manifests carry a signature so other implementers can trust provenance?
 - Policy objects (the attention and interruption rules from Phase 3): separate schema, or an `ext` namespace on the manifest?
