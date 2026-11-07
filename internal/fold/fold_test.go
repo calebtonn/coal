@@ -1,6 +1,7 @@
 package fold
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,14 +132,14 @@ func TestRecordedSession(t *testing.T) {
 	v.send("user-prompt-submit.json", "UserPromptSubmit", func(e *capture.Event) {
 		e.SessionRef, e.Cwd, e.Prompt = capture.SessionRef("8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"), sub, "Now add a CSV export button please"
 	})
-	os.WriteFile(filepath.Join(sub, "export.js"), []byte("export function csv() {}\n"), 0o644)
+	os.WriteFile(filepath.Join(sub, "export.ts"), []byte("export function csv() {}\n"), 0o644)
 	v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) {
-		e.SessionRef, e.Cwd, e.Path = capture.SessionRef("8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"), sub, filepath.Join(sub, "export.js")
+		e.SessionRef, e.Cwd, e.Path = capture.SessionRef("8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"), sub, filepath.Join(sub, "export.ts")
 	})
 	// Another file in the same session is not a second attach.
-	os.WriteFile(filepath.Join(sub, "more.js"), []byte("1\n"), 0o644)
+	os.WriteFile(filepath.Join(sub, "notes.md"), []byte("1\n"), 0o644)
 	v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) {
-		e.SessionRef, e.Cwd, e.Path = capture.SessionRef("8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"), sub, filepath.Join(sub, "more.js")
+		e.SessionRef, e.Cwd, e.Path = capture.SessionRef("8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"), sub, filepath.Join(sub, "notes.md")
 	})
 	sm, err := metrics.Summarize(v.a.Store.Dir(), time.Time{})
 	if err != nil || sm.Counts[metrics.ManifestCreated] != 1 || sm.Counts[metrics.SessionAttached] != 1 || sm.Counts[metrics.ResumeActed] != 1 {
@@ -377,5 +378,90 @@ func TestResumeRefreshesStart(t *testing.T) {
 	v.send("session-end.json", "SessionEnd", nil)
 	if m, _ := v.a.Get(id); m.State.NextStep != "add CSV export" {
 		t.Errorf("resumed session's extraction was suppressed: %+v", m.State)
+	}
+}
+
+func writeConfig(t *testing.T, v *env, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(v.a.Store.Dir(), "config.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCaptureExtensions(t *testing.T) {
+	v := setup(t)
+	v.send("session-start.json", "SessionStart", nil)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", nil)
+	for _, name := range []string{"app.js", "style.css", "Makefile"} {
+		v.write(name, "x")
+		v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) { e.Path = filepath.Join(v.project, name) })
+	}
+	if ms := v.all(); len(ms) != 0 {
+		t.Fatalf("default extensions captured %d", len(ms))
+	}
+	v.write("README.MD", "x")
+	v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) { e.Path = filepath.Join(v.project, "README.MD") })
+	if ms := v.all(); len(ms) != 1 || len(ms[0].Artifacts) != 1 {
+		t.Fatalf("upper-case .MD not captured")
+	}
+	writeConfig(t, v, `{"captureExtensions": ["JS", ".css"]}`)
+	for _, name := range []string{"app.js", "style.css", "page.html"} {
+		v.write(name, "y")
+		v.send("post-tool-use-write.json", "PostToolUse", func(e *capture.Event) { e.Path = filepath.Join(v.project, name) })
+	}
+	if m := v.all()[0]; len(m.Artifacts) != 3 {
+		t.Errorf("configured extensions: %d artifacts", len(m.Artifacts))
+	}
+}
+
+func TestMarkersNone(t *testing.T) {
+	v := setup(t)
+	writeConfig(t, v, `{"markers": "none"}`)
+	v.session1()
+	if _, err := os.Stat(filepath.Join(v.project, ".coal")); err == nil {
+		t.Fatal("wrote .coal with markers none")
+	}
+	m := v.all()[0]
+	// Matching still works through contexts, and an existing marker is
+	// still read.
+	sub := filepath.Join(v.project, "src")
+	os.MkdirAll(sub, 0o755)
+	if got := match(v.a, sub); got == nil || got.ID != m.ID {
+		t.Errorf("context match with markers none: %v", got)
+	}
+	other := manifest.New("Other work", manifest.SourceUser, manifest.Provenance{Tool: "test"})
+	v.a.Create(other, op("test"))
+	os.WriteFile(filepath.Join(v.project, ".coal"), []byte(`{"manifest":"`+other.ID+`"}`), 0o644)
+	if got := match(v.a, sub); got == nil || got.ID != other.ID {
+		t.Errorf("existing marker ignored with markers none")
+	}
+	if LoadConfig(t.TempDir()).Markers != MarkersProject {
+		t.Error("default is not project")
+	}
+}
+
+func TestSummarizeJob(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	if files, _ := filepath.Glob(filepath.Join(SummarizeDir(v.a.Store.Dir()), "*.json")); len(files) != 0 {
+		t.Fatalf("job queued without a summarizer: %v", files)
+	}
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	v.send("session-start-resume.json", "SessionStart", nil)
+	v.send("session-end.json", "SessionEnd", asB)
+	files, _ := filepath.Glob(filepath.Join(SummarizeDir(v.a.Store.Dir()), "*.json"))
+	if len(files) != 1 || !strings.Contains(files[0], "claude-code_session_"+sidB) {
+		t.Fatalf("jobs: %v", files)
+	}
+	var job SummarizeJob
+	b, _ := os.ReadFile(files[0])
+	json.Unmarshal(b, &job)
+	if job.ManifestID != v.all()[0].ID || job.SessionRef != capture.SessionRef(sidB) || job.StartedAt == "" || !strings.HasSuffix(job.TranscriptPath, ".jsonl") {
+		t.Errorf("job: %+v", job)
+	}
+	for _, c := range []string{`{"summarizer": null}`, `{"summarizer": false}`, `{}`, `not json`} {
+		if os.WriteFile(filepath.Join(v.a.Store.Dir(), "config.json"), []byte(c), 0o600); LoadConfig(v.a.Store.Dir()).Summarizer {
+			t.Errorf("%s counts as a summarizer", c)
+		}
 	}
 }

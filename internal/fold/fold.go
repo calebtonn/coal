@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -39,6 +40,7 @@ type Session struct {
 	FirstPrompt          string `json:"firstPrompt,omitempty"`
 	ManifestID           string `json:"manifestID,omitempty"`
 	LastAssistantMessage string `json:"lastAssistantMessage,omitempty"`
+	TranscriptPath       string `json:"transcriptPath,omitempty"`
 	StartedAt            string `json:"startedAt"`
 	EndedAt              string `json:"endedAt,omitempty"`
 	// RecordedByModel is set at sessionEnd when the manifest's state
@@ -74,6 +76,9 @@ func Apply(a *app.App, e *capture.Event) error {
 	}
 	if s.Cwd == "" {
 		s.Cwd = e.Cwd
+	}
+	if e.TranscriptPath != "" {
+		s.TranscriptPath = e.TranscriptPath
 	}
 	switch e.Kind {
 	case capture.KindSessionStart:
@@ -205,7 +210,8 @@ func fileWritten(a *app.App, s *Session, e *capture.Event) error {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(s.Cwd, path)
 	}
-	if skipFile(a, path) {
+	cfg := LoadConfig(a.Store.Dir())
+	if !cfg.Captures(path) || skipFile(a, path) {
 		return nil
 	}
 	// Only files inside the session's project are captured (C2), and
@@ -236,7 +242,7 @@ func fileWritten(a *app.App, s *Session, e *capture.Event) error {
 			if err := upgradePlaceholder(a, s); err != nil {
 				return err
 			}
-		} else if err := create(a, s); err != nil {
+		} else if err := create(a, s, cfg); err != nil {
 			return err
 		} else {
 			created = true
@@ -256,9 +262,9 @@ func fileWritten(a *app.App, s *Session, e *capture.Event) error {
 	return err
 }
 
-// create makes a manifest for the session's project with contexts and
-// a .coal marker (ADR-013, #4).
-func create(a *app.App, s *Session) error {
+// create makes a manifest for the session's project with contexts and,
+// unless config.json sets markers to none, a .coal marker (ADR-013, #4).
+func create(a *app.App, s *Session, cfg Config) error {
 	summary, source := s.FirstPrompt, manifest.SourceUser
 	root := marker.ProjectRoot(s.Cwd)
 	if summary == "" {
@@ -271,6 +277,9 @@ func create(a *app.App, s *Session) error {
 	}
 	s.attach(m)
 	metrics.Record(a.Store.Dir(), metrics.ManifestCreated, map[string]any{"manifest": m.ID, "session": s.SessionRef})
+	if cfg.Markers == MarkersNone {
+		return nil
+	}
 	if err := marker.Write(root, m.ID); err != nil {
 		a.Store.Log("capture: marker for %s in %s: %v", m.ID, root, err)
 	}
@@ -294,8 +303,16 @@ func closeOut(a *app.App, s *Session) error {
 	if st, ok := manifest.StateStampOf(m); ok && st.At >= s.StartedAt {
 		s.RecordedByModel = true
 	}
-	sum, next := capture.ExtractState(s.LastAssistantMessage)
-	if s.RecordedByModel || sum == "" && next == "" {
+	if s.RecordedByModel {
+		return nil
+	}
+	if LoadConfig(a.Store.Dir()).Summarizer {
+		if err := queueSummarize(a, s); err != nil {
+			a.Store.Log("capture: summarize job for %s: %v", s.SessionRef, err)
+		}
+	}
+	sum, next := extract(s)
+	if sum == "" && next == "" {
 		return nil
 	}
 	_, err = a.Update(s.ManifestID, 0, func(m *manifest.Manifest) error {
@@ -341,4 +358,51 @@ func closeStale(a *app.App, current string, now time.Time) error {
 		}
 	}
 	return nil
+}
+
+// extract is the deterministic sessionEnd fallback (#2, ADR-016).
+func extract(s *Session) (summary, nextStep string) {
+	return capture.ExtractState(s.LastAssistantMessage)
+}
+
+// SummarizeJob is a request for the daemon's opt-in summarizer. Capture
+// only writes it; the daemon runs it (ADR-016).
+type SummarizeJob struct {
+	ManifestID     string `json:"manifestID"`
+	SessionRef     string `json:"sessionRef"`
+	TranscriptPath string `json:"transcriptPath,omitempty"`
+	StartedAt      string `json:"startedAt"`
+}
+
+var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]`)
+
+// SummarizeDir is where summarize jobs wait for the daemon.
+func SummarizeDir(home string) string { return filepath.Join(home, "queue", "summarize") }
+
+// queueSummarize writes queue/summarize/<sessionRef>.json atomically. A
+// later job for the same session replaces the earlier one.
+func queueSummarize(a *app.App, s *Session) error {
+	dir := SummarizeDir(a.Store.Dir())
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	b, err := json.Marshal(SummarizeJob{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt})
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".job-*.tmp")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(b, '\n'))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), filepath.Join(dir, unsafeName.ReplaceAllString(s.SessionRef, "_")+".json"))
+	}
+	if err != nil {
+		os.Remove(f.Name())
+	}
+	return err
 }
