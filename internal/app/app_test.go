@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -133,5 +134,30 @@ func TestReindexDuringWritesStaysCurrent(t *testing.T) {
 	rs := find(t, a, "")
 	if len(rs) != 1 || rs[0].NextStep != got.State.NextStep {
 		t.Fatalf("index has %+v, store has %q", rs, got.State.NextStep)
+	}
+}
+
+func TestNonDeferredOpenFlushesPending(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	home := t.TempDir()
+	hook, err := Open(home, store.WithDeferredHistory())
+	must(t, err)
+	m := manifest.New("budget tracker", manifest.SourceUser, manifest.Provenance{Tool: "test"})
+	must(t, hook.Create(m, op))
+	hook.Close()
+	if _, err := os.Stat(filepath.Join(home, ".history-pending")); err != nil {
+		t.Fatalf("no pending marker: %v", err)
+	}
+	cli, err := Open(home)
+	must(t, err)
+	defer cli.Close()
+	if _, err := os.Stat(filepath.Join(home, ".history-pending")); !os.IsNotExist(err) {
+		t.Fatalf("pending not flushed: %v", err)
+	}
+	out, err := exec.Command("git", "-C", home, "log", "--format=%s").Output()
+	if err != nil || !strings.Contains(string(out), "coal: batched writes on "+m.ID) {
+		t.Fatalf("log %q, %v", out, err)
 	}
 }

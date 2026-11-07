@@ -21,13 +21,22 @@ type App struct {
 	Index *index.Index
 }
 
-// Open opens the store at home and its index. An empty index is rebuilt
+// Open opens the store at home and its index. Pass
+// store.WithDeferredHistory() from hooks, so no write runs git. An empty index is rebuilt
 // from manifests/, so a new or deleted index.db never hides manifests. A
 // corrupt index.db is renamed to index.db.broken.<ts> and replaced.
 func Open(home string, opts ...store.Option) (*App, error) {
 	s, err := store.Open(home, opts...)
 	if err != nil {
 		return nil, err
+	}
+	// Non-hook callers commit what hooks left pending (ADR-014). A
+	// failure is logged: the writes are safe on disk and the next flush
+	// retries.
+	if !s.Deferred() {
+		if _, err := s.CommitPending("", 0); err != nil {
+			s.Log("history: committing pending writes: %v", err)
+		}
 	}
 	path := filepath.Join(s.Dir(), "index.db")
 	ix, err := index.Open(path)

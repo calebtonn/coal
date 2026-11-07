@@ -18,9 +18,7 @@ var gitignoreLines = []string{"artifacts/", "index.db*", "queue/", "logs/", "ses
 // history gets the new ignore lines and stops tracking sessions/ once;
 // the files stay on disk.
 func (s *Store) initGit() error {
-	if _, err := exec.LookPath("git"); err != nil {
-		s.history = false
-		s.Log("warning: git not found on PATH; manifest history is off")
+	if !s.findGit() {
 		return nil
 	}
 	unlock, err := lock(filepath.Join(s.dir, ".git.lock"))
@@ -28,6 +26,21 @@ func (s *Store) initGit() error {
 		return err
 	}
 	defer unlock()
+	return s.initGitLocked()
+}
+
+// findGit turns history off, with one log line, when git is not on PATH.
+func (s *Store) findGit() bool {
+	if _, err := exec.LookPath("git"); err != nil {
+		s.history = false
+		s.Log("warning: git not found on PATH; manifest history is off")
+		return false
+	}
+	return true
+}
+
+// initGitLocked does the work of initGit; the caller holds .git.lock.
+func (s *Store) initGitLocked() error {
 	added, err := s.ensureGitignore()
 	if err != nil {
 		return err
@@ -131,6 +144,10 @@ func (s *Store) git(args ...string) (string, error) {
 // finish close together can share one commit.
 func (s *Store) commit(msg string) {
 	if !s.history {
+		return
+	}
+	if s.deferred {
+		s.markPending()
 		return
 	}
 	unlock, err := lock(filepath.Join(s.dir, ".git.lock"))

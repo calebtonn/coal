@@ -65,8 +65,9 @@ func WithHistory(on bool) Option { return func(s *Store) { s.history = on } }
 
 // Store is one data directory, safe for concurrent goroutines and processes.
 type Store struct {
-	dir     string
-	history bool
+	dir      string
+	history  bool
+	deferred bool
 
 	saltMu  sync.Mutex
 	saltVal []byte
@@ -90,7 +91,10 @@ func Open(dir string, opts ...Option) (*Store, error) {
 	if err := writeIfMissing(filepath.Join(abs, "config.json"), "{\"version\":\"0.1\"}\n"); err != nil {
 		return nil, err
 	}
-	if s.history {
+	switch {
+	case s.history && s.deferred:
+		s.findGit() // no git process: setup waits for CommitPending
+	case s.history:
 		return s, s.initGit()
 	}
 	return s, nil
