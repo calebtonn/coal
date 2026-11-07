@@ -70,6 +70,8 @@ A file or URI produced during a session. Registered artifacts are copied into co
 - `coal open <id> [--artifact n]` opens the artifact with the OS default handler
 - `coal reindex`
 - `coal mcp` runs the MCP server on stdio (used by tool configs)
+- `coal resume [--tool claude-code]` finds the manifest for the current directory and launches the harness with a first prompt that asks it to open from the next step
+- `coal new` creates a second manifest in a directory that already has one and makes it active (ADR-013)
 
 ### F4. MCP server
 
@@ -90,19 +92,15 @@ Resources exposed:
 
 ### F5. Claude Code adapter
 
-The adapter translates Claude Code hook payloads into the capture contract from ADR-011: `sessionStart`, `prompt`, `fileWritten`, `turnEnd` and `sessionEnd`. Hooks never write manifests. Each hook drops one event file in `~/.coal/queue/` and exits. One writer, holding `queue/.lock`, folds events into manifests in order.
+Implements the capture contract from ADR-011 (`sessionStart`, `fileWritten`, `turnEnd`, `sessionEnd`) against Claude Code hooks. Installs into `~/.claude/settings.json` with `coal adapter install claude-code`.
 
-Hooks, installed into `~/.claude/settings.json` (or a project `.claude/settings.json`) with `coal adapter install claude-code`:
+- `SessionStart`: match a manifest for `cwd` (F5.1). If found: print a `systemMessage` banner (`COAL: <summary>. Next: <nextStep>. <n> open questions.`) and inject `additionalContext` with summary, nextStep, openQuestions, artifact list, and an instruction to open the first reply by offering to continue. Then drain `~/.coal/queue/`.
+- `PostToolUse` on `Write` / `Edit` for `*.html`, `*.md`, `*.py`, `*.ts`, `*.tsx`: attach to the matched active manifest; if none, create one lazily with `intent.summary` = the session's first user message (trimmed to 200 chars), `intent.source` = `user`, and `contexts[]` = `{kind: path, key: <git top level, else cwd>}` plus `{kind: repo, key: <normalized origin URL>}` when there is a remote. Write the `.coal` marker (ADR-013) unless `markers: none`. Register the file as an artifact.
+- `Stop`: bump `state.lastActivityAt` only.
+- `SessionEnd`: write `~/.coal/queue/<sessionId>.json` (session id, transcript path, cwd) and return within the budget. No summary work here.
+- Queue worker (run by the daemon or the next `SessionStart`): for each job, if the model recorded state through `coal_update_state`, nothing more; else extract `state.summary` deterministically from the transcript; if `config.summarizer` is set, run it instead. Then delete the job.
 
-- `SessionStart`: fold any queued events first, so the previous session's end is applied. Then match the working directory to a manifest (see Matching). On a match, print a `systemMessage` the user sees before typing, for example `COAL: You left off at "Add CSV export". 1 open question.`, and `additionalContext` with the summary, `nextStep`, open questions, artifact list and an instruction to open the first reply by offering to continue.
-- `UserPromptSubmit`: queue the prompt. The first prompt that passes the summary filter (#11) becomes `intent.summary` with `source: user`.
-- `PostToolUse` on `Write`, `Edit`, `MultiEdit` and `NotebookEdit`: queue the written path. The writer attaches it to the matched manifest, or creates one lazily, and registers it as an artifact version (artifact identity is `(manifest, uri)`, see `docs/04-INTENT-MANIFEST.md`). Files on the secret deny-list, or with bodies that look like tokens, are recorded with `skipped` and no copy.
-- `Stop`: runs after every turn, not at session end. Queue a cheap `turnEnd` with `last_assistant_message`; the writer bumps `state.lastActivityAt`.
-- `SessionEnd`: queue `sessionEnd` and return at once, because the default timeout is 1.5 seconds. It also fires on `/clear`. Sessions that end without it are folded on the next `SessionStart`.
-
-**Matching** (ADR-013). In order: a `.coal` marker at or above the working directory, nearest first; a `path` context where the resolved working directory equals the key or sits under `key + "/"`, longest key first; a `repo` context whose key equals the working directory's normalized origin remote. Only `active` and `paused` manifests match. On lazy creation the writer adds a `path` context (git top level, else the working directory), a `repo` context when there is a remote, and the `.coal` marker, which it lists in `.git/info/exclude`. A second session in the same project attaches to the same manifest.
-
-**Summaries** (#2). No model call by default. The model is asked, through the `SessionStart` context and the `coal_update_state` description, to record `nextStep` when it finishes a piece of work. If it did not, `sessionEnd` falls back to extraction: `state.summary` from the last assistant message, and `nextStep` only from a line that starts with "Next step" or "Next:". A model summarizer over the transcript is an opt-in setting in `config.json`, which counts as a call the user configured. Model proposals go to `intent.goal` and `state.summary`, never over `intent.summary`.
+F5.1 Matching. A `.coal` marker in `cwd` or any parent up to the git top level wins. Otherwise match `contexts[]`: a `path` context matches when `realpath(cwd) === key` or starts with `key + sep`; a `repo` context matches when the cwd's normalized remote equals the key. Prefer the longest matching key. Tests cover: subdirectory, sibling with shared prefix (`budget` vs `budget-old`), home directory, two clones of one remote.
 
 ### F6. Web UI
 

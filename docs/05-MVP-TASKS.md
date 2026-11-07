@@ -55,22 +55,19 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 ## Week 3: Capture
 
 ### T08. Claude Code adapter (`coal adapter install claude-code`)
-- The capture contract from ADR-011 (`sessionStart`, `prompt`, `fileWritten`, `turnEnd`, `sessionEnd`), kept separate from Claude Code's payload shapes
-- Hooks for `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop` and `SessionEnd` call `coal hook <event>`, which writes one event file to `queue/` and exits; one writer under `queue/.lock` folds events into manifests (see F5)
-- `Stop` only bumps `state.lastActivityAt`; `SessionEnd` queues the end of session and returns well inside its 1.5 second timeout (#1)
-- `intent.summary` = the first user message that passes the summary filter (#11), trimmed to 200 characters; `intent.source` = `user`, else `model`
-- Lazy manifest creation on first qualifying write writes `contexts[]` and the `.coal` marker (ADR-013, #4); session id from the payload becomes `sessionRef`
-- Artifacts are identified by `(manifest, uri)` with `versions[]` (#5); writes use `rev` compare-and-swap (#6); deny-list and token scan before copying (#7)
-- `sessionEnd` falls back to extraction when the model recorded no state (#2); proposals go to `state.summary` and `intent.goal`, never over `intent.summary`
-- `coal adapter install claude-code` merges hook config into `~/.claude/settings.json` without clobbering existing hooks; `coal adapter uninstall claude-code` removes only COAL's entries
-- **Accept:** The definition-of-done demo step 1 in `CLAUDE.md` works; every hook returns in under 200 ms on recorded payloads
+- Internal capture contract per ADR-011; the Claude Code adapter translates hook payloads into it
+- Hooks: `SessionStart`, `PostToolUse`, `Stop`, `SessionEnd`, behaving exactly as F5
+- `coal adapter install claude-code` merges hook config into `~/.claude/settings.json` without clobbering existing hooks; `uninstall` reverses it
+- Lazy manifest creation writes `contexts[]` and the `.coal` marker (ADR-013); a second session in the same directory attaches, never creates
+- `SessionEnd` only queues; the queue worker fills `state.summary` as F5 says
+- **Accept:** definition-of-done step 1 passes; a second session in the demo directory adds to the same manifest; `SessionEnd` returns in under 500 ms on a cold disk
 
-### T09. Session resume context (headline feature)
-- `SessionStart` folds the queue, then matches: `.coal` marker at or above cwd, then a `path` context where cwd is at or under the key (longest wins), then a `repo` context equal to cwd's normalized remote (#4, ADR-013)
-- Prints a `systemMessage` with the next step, shown to the user before they type (#3)
-- Injects summary, nextStep, openQuestions and artifact list as `additionalContext`, with an instruction to open the first reply by offering to continue
-- Tests: subdirectory, sibling with a shared prefix (`budget` vs `budget-old`), home directory, two clones of the same remote
-- **Accept:** On session start in the budget directory, the terminal shows the next step before the user types, and the first assistant reply offers to continue from it. This is step 3 of the definition of done.
+### T09. Resume (headline feature)
+- `SessionStart` matching per F5.1, with the tests listed there
+- Banner via `systemMessage`; verify how the current Claude Code build displays it and adjust
+- `additionalContext` carrying summary, nextStep, openQuestions, artifacts, and the open-by-offering-to-continue instruction
+- `coal resume`: finds the manifest, launches `claude` with a first prompt supplied, so the first turn is the resume
+- **Accept:** definition-of-done step 3 passes in both forms: plain `claude` shows the banner before the user types and the first reply offers to continue; `coal resume` opens with the resume as the first turn
 
 ## Week 4: Web UI
 
@@ -83,7 +80,8 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 
 ## Week 5: Hardening
 
-### T11. Error handling and logging
+### T11. Error handling, logging, history
+- `~/.coal/` becomes a git repo on `coal init` if `git` is on PATH (ADR-014); the daemon commits debounced, never from a hook; `coal log <id>` shows a manifest's history
 - Every CLI and MCP error is a one-line human message plus `--verbose` stack
 - Daemon logs rotate
 - Corrupt manifest file is skipped with a warning, not fatal
@@ -98,8 +96,8 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 ## Week 6: Demo and decision
 
 ### T12b. Publish the schema at its id
-- Static site from the repo (GitHub Pages or similar) serving `spec/` at `https://coalmine.io/schema/`
-- coalmine.app redirects to coalmine.io
+- Static site from the repo (`site/`, deployed to GitHub Pages by `.github/workflows/pages.yml`) serving the schema at its `$id`
+- coalmine.app redirects to coalmine.io (a DNS step for the owner, nothing in the repo)
 - **Accept:** `curl https://coalmine.io/schema/intent-manifest/0.1.json` returns the committed schema byte for byte
 
 ### T13. Demo script and recording
@@ -119,4 +117,3 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 - Policy engine, interrupt gating, Slack and calendar signals
 - Sync, encryption, accounts, teams
 - Published npm packages under a real org
-- Anything beyond serving `spec/` at `https://coalmine.io/schema/` (T12b); a full website for the spec waits

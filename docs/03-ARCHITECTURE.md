@@ -57,26 +57,45 @@ Two packages. `diamond` has no runtime dependency on anything else in the repo. 
 sequenceDiagram
     participant U as User
     participant CC as Claude Code
-    participant H as coal hook
-    participant Q as queue/
-    participant W as Writer (holds queue/.lock)
+    participant H as COAL hooks
     participant S as Storage
+    participant Q as Queue worker
 
     U->>CC: "Build me an HTML budget tracker"
     CC->>H: UserPromptSubmit(prompt)
     H->>Q: prompt event, exit
     CC->>CC: writes budget.html
     CC->>H: PostToolUse(Write, budget.html)
-    H->>Q: fileWritten event, exit
-    W->>Q: fold events in order
-    W->>S: manifests/<id>.json (lazy), artifacts/<sha256>, .coal marker, git commit
+    H->>S: match or create manifest, write contexts[] and .coal
+    H->>S: register artifact (sha256)
     CC->>H: Stop (every turn)
-    H->>Q: turnEnd event, exit
+    H->>S: bump lastActivityAt
     U->>CC: ends session
-    CC->>H: SessionEnd
-    H->>Q: sessionEnd event, exit
-    W->>S: state updated (next SessionStart folds it if nothing else did)
+    CC->>H: SessionEnd (1.5 s budget)
+    H->>S: queue/<session>.json
+    Q->>S: later: fill state.summary if the model did not
 ```
+
+## Resume flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant CLI as coal resume
+    participant CC as Claude Code
+    participant H as COAL hooks
+    participant S as Storage
+
+    U->>CLI: coal resume (in the budget directory)
+    CLI->>S: match manifest by .coal or contexts[]
+    CLI->>CC: launch with first prompt: open from nextStep
+    CC->>H: SessionStart
+    H->>S: read manifest
+    H-->>CC: systemMessage banner + additionalContext
+    CC-->>U: "You left off at CSV export. Continue?"
+```
+
+Plain `claude` without the launcher gets the banner and context from the hook, and the first reply (after the user types anything) opens by offering to continue.
 
 ## Find and resume flow (any tool)
 
@@ -146,7 +165,7 @@ Storage is file-first. The ER diagram describes the shape, not a relational sche
 | JSON manifests, one per file | Human-readable, git-able, trivially portable, diffable. |
 | SQLite FTS5 | Zero-dependency full-text search, fast enough for years of use on one machine. |
 | MCP as the primary interface | It is the one protocol every AI tool is adopting. Building to it means COAL works with tools that do not exist yet. |
-| Claude Code hooks for first capture | One adapter is enough to test the record. Cursor, Codex CLI and Gemini CLI also have lifecycle hooks with JSON on stdin, so each later adapter is a translation into the same capture contract (ADR-011). Proves capture without browser hacks. |
+| Claude Code hooks for first capture | Deterministic lifecycle hooks, no browser hacks. Cursor, Codex CLI and Gemini CLI have hooks too; one adapter is enough to test the record, and the capture contract in ADR-011 keeps the next ones cheap. |
 | TypeScript | MCP SDK, Claude Code hook ecosystem, and the web UI all live there. One language, one toolchain. |
 
 ## Phase map
