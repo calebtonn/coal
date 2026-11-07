@@ -25,6 +25,7 @@ func setup(t *testing.T) *env {
 	t.Helper()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("HOME", filepath.Join(base, "home"))
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	project := filepath.Join(base, "projects", "budget")
 	if err := os.MkdirAll(filepath.Join(project, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -448,8 +449,15 @@ func TestSummarizeJob(t *testing.T) {
 		t.Fatalf("job queued without a summarizer: %v", files)
 	}
 	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	tp := transcript(t, tline("user", "Add a CSV export button to the page"))
+	withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
+	// A transcript outside Claude Code's projects dir gets no job.
 	v.send("session-start-resume.json", "SessionStart", nil)
 	v.send("session-end.json", "SessionEnd", asB)
+	if files, _ := filepath.Glob(filepath.Join(summarize.Dir(v.a.Store.Dir()), "*.json")); len(files) != 0 {
+		t.Fatalf("job for a transcript outside ~/.claude/projects: %v", files)
+	}
+	v.send("session-end.json", "SessionEnd", withTP)
 	files, _ := filepath.Glob(filepath.Join(summarize.Dir(v.a.Store.Dir()), "*.json"))
 	if len(files) != 1 || !strings.Contains(files[0], "claude-code_session_"+sidB) {
 		t.Fatalf("jobs: %v", files)
@@ -457,13 +465,13 @@ func TestSummarizeJob(t *testing.T) {
 	var job summarize.Job
 	b, _ := os.ReadFile(files[0])
 	json.Unmarshal(b, &job)
-	if job.ManifestID != v.all()[0].ID || job.SessionRef != capture.SessionRef(sidB) || job.StartedAt == "" || !strings.HasSuffix(job.TranscriptPath, ".jsonl") {
+	if job.ManifestID != v.all()[0].ID || job.SessionRef != capture.SessionRef(sidB) || job.StartedAt == "" || job.TranscriptPath != tp || job.EndedAt == "" || job.EndedAt < job.StartedAt {
 		t.Errorf("job: %+v", job)
 	}
 	// No job when the summarizer is off or the model recorded state.
 	os.Remove(files[0])
 	writeConfig(t, v, `{"summarizer": null}`)
-	v.send("session-end.json", "SessionEnd", asB)
+	v.send("session-end.json", "SessionEnd", withTP)
 	if files, _ := filepath.Glob(filepath.Join(summarize.Dir(v.a.Store.Dir()), "*.json")); len(files) != 0 {
 		t.Errorf("job with the summarizer off: %v", files)
 	}
@@ -477,9 +485,14 @@ func transcript(t *testing.T, lines ...map[string]any) string {
 		j, _ := json.Marshal(l)
 		b.Write(append(j, '\n'))
 	}
-	p := filepath.Join(t.TempDir(), "session.jsonl")
-	os.WriteFile(p, []byte(b.String()), 0o600)
-	return p
+	// Claude Code keeps transcripts under ~/.claude/projects, the only
+	// place capture reads them from.
+	dir := filepath.Join(os.Getenv("HOME"), ".claude", "projects", "-budget")
+	os.MkdirAll(dir, 0o700)
+	f, _ := os.CreateTemp(dir, "session-*.jsonl")
+	f.WriteString(b.String())
+	f.Close()
+	return f.Name()
 }
 
 func tline(typ string, content any) map[string]any {
@@ -551,5 +564,23 @@ func TestLateSummarizerStampDoesNotHideNextSession(t *testing.T) {
 	m, _ := v.a.Get(id)
 	if m.State.Summary != "Added CSV export." || m.State.NextStep != "add charts" {
 		t.Errorf("B's extraction was hidden by the summarizer's stamp: %+v", m.State)
+	}
+}
+
+func TestTranscriptOutsideClaudeIsNotRead(t *testing.T) {
+	v := setup(t)
+	// A payload that names some other file as its transcript.
+	other := filepath.Join(t.TempDir(), "secrets.jsonl")
+	os.WriteFile(other, []byte(`{"type":"user","message":{"content":"the database password is hunter2 and more"}}`+"\n"), 0o600)
+	v.write("budget.html", "x")
+	with := func(e *capture.Event) { e.TranscriptPath = other }
+	v.send("session-start.json", "SessionStart", with)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", with)
+	v.send("post-tool-use-write.json", "PostToolUse", with)
+	v.send("stop.json", "Stop", with)
+	v.send("session-end.json", "SessionEnd", with)
+	m := v.all()[0]
+	if strings.Contains(m.State.Summary, "hunter2") || m.State.NextStep != "add CSV export" {
+		t.Errorf("read a transcript outside ~/.claude/projects: %+v", m.State)
 	}
 }

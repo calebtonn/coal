@@ -329,7 +329,11 @@ func queueSummarizer(a *app.App, s *Session) {
 	if cfg == nil {
 		return
 	}
-	j := summarize.Job{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt}
+	if !summarize.AllowedTranscript(s.TranscriptPath) {
+		a.Store.Log("capture: no summarize job for %s: transcript is not a Claude Code session file", s.SessionRef)
+		return
+	}
+	j := summarize.Job{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt, EndedAt: s.EndedAt}
 	if err := queueJob(a.Store.Dir(), j); err != nil {
 		a.Store.Log("capture: summarize job for %s: %v", s.SessionRef, err)
 	}
@@ -389,7 +393,8 @@ const MaxTranscript = 2 << 20
 const MaxFilesTouched = 5
 
 // extract is the deterministic sessionEnd fallback (#2, ADR-016). When
-// the session's transcript exists, or there is no last assistant
+// the session's transcript exists and summarize.AllowedTranscript
+// accepts it, or there is no last assistant
 // message, it reads the transcript: the summary is the last assistant
 // message's first paragraph, else the last user prompt, followed by
 // "Files touched: a, b" with at most five base names. Otherwise, or if
@@ -397,7 +402,9 @@ const MaxFilesTouched = 5
 // that Stop delivered.
 func extract(a *app.App, s *Session) (summary, nextStep string) {
 	summary, nextStep = capture.ExtractState(s.LastAssistantMessage)
-	if s.TranscriptPath == "" {
+	// Only Claude Code's own session files are read, so a payload cannot
+	// point extraction at any other file.
+	if s.TranscriptPath == "" || !summarize.AllowedTranscript(s.TranscriptPath) {
 		return summary, nextStep
 	}
 	if _, err := os.Lstat(s.TranscriptPath); err != nil && s.LastAssistantMessage != "" {
