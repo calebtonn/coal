@@ -19,6 +19,7 @@ import (
 	"github.com/calebtonn/coal/internal/marker"
 	"github.com/calebtonn/coal/internal/metrics"
 	"github.com/calebtonn/coal/internal/store"
+	"github.com/calebtonn/coal/internal/summarize"
 )
 
 // CapturedBy names this adapter on artifact versions.
@@ -311,7 +312,7 @@ func closeOut(a *app.App, s *Session) error {
 			a.Store.Log("capture: summarize job for %s: %v", s.SessionRef, err)
 		}
 	}
-	sum, next := extract(s)
+	sum, next := extract(a, s)
 	if sum == "" && next == "" {
 		return nil
 	}
@@ -360,33 +361,65 @@ func closeStale(a *app.App, current string, now time.Time) error {
 	return nil
 }
 
-// extract is the deterministic sessionEnd fallback (#2, ADR-016).
-func extract(s *Session) (summary, nextStep string) {
-	return capture.ExtractState(s.LastAssistantMessage)
+// MaxFilesTouched caps the file names appended to state.summary.
+const MaxFilesTouched = 5
+
+// extract is the deterministic sessionEnd fallback (#2, ADR-016). When
+// the session's transcript exists, or there is no last assistant
+// message, it reads the transcript: the summary is the last assistant
+// message's first paragraph, else the last user prompt, followed by
+// "Files touched: a, b" with at most five base names. Otherwise, or if
+// the transcript cannot be read, it uses the last assistant message
+// that Stop delivered.
+func extract(a *app.App, s *Session) (summary, nextStep string) {
+	summary, nextStep = capture.ExtractState(s.LastAssistantMessage)
+	if s.TranscriptPath == "" {
+		return summary, nextStep
+	}
+	if _, err := os.Lstat(s.TranscriptPath); err != nil && s.LastAssistantMessage != "" {
+		return summary, nextStep
+	}
+	tsum, tnext, files, err := summarize.FromTranscript(s.TranscriptPath, summarize.DefaultMaxTranscriptBytes)
+	if err != nil {
+		a.Store.Log("capture: transcript for %s: %v", s.SessionRef, err)
+		return summary, nextStep
+	}
+	if tsum != "" {
+		summary = tsum
+	}
+	if tnext != "" {
+		nextStep = tnext
+	}
+	if names := baseNames(files, MaxFilesTouched); len(names) > 0 {
+		summary = strings.TrimSpace(summary + " Files touched: " + strings.Join(names, ", "))
+	}
+	return summary, nextStep
 }
 
-// SummarizeJob is a request for the daemon's opt-in summarizer. Capture
-// only writes it; the daemon runs it (ADR-016).
-type SummarizeJob struct {
-	ManifestID     string `json:"manifestID"`
-	SessionRef     string `json:"sessionRef"`
-	TranscriptPath string `json:"transcriptPath,omitempty"`
-	StartedAt      string `json:"startedAt"`
+// baseNames returns up to n distinct base names from paths, in order.
+func baseNames(paths []string, n int) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, p := range paths {
+		if b := filepath.Base(p); b != "." && b != "/" && !seen[b] && len(out) < n {
+			seen[b] = true
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
-// SummarizeDir is where summarize jobs wait for the daemon.
-func SummarizeDir(home string) string { return filepath.Join(home, "queue", "summarize") }
-
-// queueSummarize writes queue/summarize/<sessionRef>.json atomically. A
+// queueSummarize writes queue/summarize/<sessionRef>.json atomically for
+// the daemon's opt-in summarizer; capture runs nothing (ADR-016). A
 // later job for the same session replaces the earlier one.
 func queueSummarize(a *app.App, s *Session) error {
-	dir := SummarizeDir(a.Store.Dir())
+	dir := summarize.Dir(a.Store.Dir())
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	b, err := json.Marshal(SummarizeJob{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt})
+	b, err := json.Marshal(summarize.Job{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt})
 	if err != nil {
 		return err
 	}

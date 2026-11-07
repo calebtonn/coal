@@ -12,6 +12,7 @@ import (
 	"github.com/calebtonn/coal/internal/capture"
 	"github.com/calebtonn/coal/internal/manifest"
 	"github.com/calebtonn/coal/internal/metrics"
+	"github.com/calebtonn/coal/internal/summarize"
 )
 
 type env struct {
@@ -443,17 +444,17 @@ func TestMarkersNone(t *testing.T) {
 func TestSummarizeJob(t *testing.T) {
 	v := setup(t)
 	v.session1()
-	if files, _ := filepath.Glob(filepath.Join(SummarizeDir(v.a.Store.Dir()), "*.json")); len(files) != 0 {
+	if files, _ := filepath.Glob(filepath.Join(summarize.Dir(v.a.Store.Dir()), "*.json")); len(files) != 0 {
 		t.Fatalf("job queued without a summarizer: %v", files)
 	}
 	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
 	v.send("session-start-resume.json", "SessionStart", nil)
 	v.send("session-end.json", "SessionEnd", asB)
-	files, _ := filepath.Glob(filepath.Join(SummarizeDir(v.a.Store.Dir()), "*.json"))
+	files, _ := filepath.Glob(filepath.Join(summarize.Dir(v.a.Store.Dir()), "*.json"))
 	if len(files) != 1 || !strings.Contains(files[0], "claude-code_session_"+sidB) {
 		t.Fatalf("jobs: %v", files)
 	}
-	var job SummarizeJob
+	var job summarize.Job
 	b, _ := os.ReadFile(files[0])
 	json.Unmarshal(b, &job)
 	if job.ManifestID != v.all()[0].ID || job.SessionRef != capture.SessionRef(sidB) || job.StartedAt == "" || !strings.HasSuffix(job.TranscriptPath, ".jsonl") {
@@ -463,5 +464,65 @@ func TestSummarizeJob(t *testing.T) {
 		if os.WriteFile(filepath.Join(v.a.Store.Dir(), "config.json"), []byte(c), 0o600); LoadConfig(v.a.Store.Dir()).Summarizer {
 			t.Errorf("%s counts as a summarizer", c)
 		}
+	}
+}
+
+// transcript writes a Claude Code transcript with the given lines.
+func transcript(t *testing.T, lines ...map[string]any) string {
+	t.Helper()
+	var b strings.Builder
+	for _, l := range lines {
+		j, _ := json.Marshal(l)
+		b.Write(append(j, '\n'))
+	}
+	p := filepath.Join(t.TempDir(), "session.jsonl")
+	os.WriteFile(p, []byte(b.String()), 0o600)
+	return p
+}
+
+func tline(typ string, content any) map[string]any {
+	return map[string]any{"type": typ, "sessionId": "s", "timestamp": "2026-11-06T10:00:00Z", "message": map[string]any{"id": typ + "1", "content": content}}
+}
+
+func toolUse(path string) map[string]any {
+	return map[string]any{"type": "tool_use", "name": "Write", "input": map[string]any{"file_path": path}}
+}
+
+func TestTranscriptExtraction(t *testing.T) {
+	v := setup(t)
+	var blocks []any
+	for _, n := range []string{"budget.html", "budget.html", "a.md", "b.md", "c.py", "d.ts", "e.tsx"} {
+		blocks = append(blocks, toolUse(filepath.Join(v.project, n)))
+	}
+	blocks = append(blocks, map[string]any{"type": "text", "text": "Added a CSV export button.\n\nNext step: add charts"})
+	path := transcript(t, tline("user", "Build me a household budget tracker as a single HTML page"), tline("assistant", blocks))
+	withPath := func(e *capture.Event) { e.TranscriptPath = path }
+	v.write("budget.html", "x")
+	v.send("session-start.json", "SessionStart", withPath)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", withPath)
+	v.send("post-tool-use-write.json", "PostToolUse", withPath)
+	v.send("stop.json", "Stop", withPath)
+	v.send("session-end.json", "SessionEnd", withPath)
+	m := v.all()[0]
+	want := "Added a CSV export button. Files touched: budget.html, a.md, b.md, c.py, d.ts"
+	if m.State.Summary != want || m.State.NextStep != "add charts" {
+		t.Errorf("state: %q / %q\nwant %q", m.State.Summary, m.State.NextStep, want)
+	}
+	if m.Intent.Summary != "Build me a household budget tracker as a single HTML page" {
+		t.Errorf("intent changed: %q", m.Intent.Summary)
+	}
+}
+
+func TestTranscriptUserFallback(t *testing.T) {
+	v := setup(t)
+	path := transcript(t, tline("user", "Please make the totals row bold and right aligned"))
+	v.write("budget.html", "x")
+	v.send("session-start.json", "SessionStart", func(e *capture.Event) { e.TranscriptPath = path })
+	v.send("user-prompt-submit.json", "UserPromptSubmit", nil)
+	v.send("post-tool-use-write.json", "PostToolUse", nil)
+	// No Stop: the session has no last assistant message.
+	v.send("session-end.json", "SessionEnd", func(e *capture.Event) { e.TranscriptPath = path })
+	if m := v.all()[0]; m.State.Summary != "Please make the totals row bold and right aligned" || m.State.NextStep != "" {
+		t.Errorf("state: %+v", m.State)
 	}
 }
