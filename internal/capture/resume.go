@@ -39,20 +39,21 @@ func ResumeOutput(m *manifest.Manifest, shortID string) ([]byte, error) {
 	return append(b, '\n'), nil
 }
 
-// ResumeLine is the one-line systemMessage shown in the terminal.
+// ResumeLine is the one-line systemMessage banner shown in the terminal
+// (F5): "COAL: <summary>. Next: <nextStep>. <n> open questions." The
+// next step and the question count are left out when there are none.
 func ResumeLine(m *manifest.Manifest, shortID string) string {
 	var b strings.Builder
-	if next := oneLine(m.State.NextStep, 200); next != "" {
-		fmt.Fprintf(&b, "COAL: You left off at %q.", next)
-		switch n := len(m.State.OpenQuestions); n {
-		case 0:
-		case 1:
-			b.WriteString(" 1 open question.")
-		default:
-			fmt.Fprintf(&b, " %d open questions.", n)
-		}
-	} else {
-		fmt.Fprintf(&b, "COAL: Resuming %q.", oneLine(m.Intent.Summary, 200))
+	b.WriteString("COAL: " + sentence(m.Intent.Summary))
+	if next := sentence(m.State.NextStep); next != "" {
+		b.WriteString(" Next: " + next)
+	}
+	switch n := len(m.State.OpenQuestions); n {
+	case 0:
+	case 1:
+		b.WriteString(" 1 open question.")
+	default:
+		fmt.Fprintf(&b, " %d open questions.", n)
 	}
 	if m.Intent.Source == manifest.SourceModel {
 		if shortID == "" {
@@ -61,6 +62,19 @@ func ResumeLine(m *manifest.Manifest, shortID string) string {
 		fmt.Fprintf(&b, ` coal rename %s "..." to fix the summary.`, shortID)
 	}
 	return b.String()
+}
+
+// sentence is s on one line, cut to 200 characters, ending in exactly
+// one full stop unless it already ends in "?" or "!". Empty stays empty.
+func sentence(s string) string {
+	s = strings.TrimRight(oneLine(s, 200), ". ")
+	if s == "" {
+		return ""
+	}
+	if strings.HasSuffix(s, "?") || strings.HasSuffix(s, "!") {
+		return s
+	}
+	return s + "."
 }
 
 func resumeContext(m *manifest.Manifest) string {

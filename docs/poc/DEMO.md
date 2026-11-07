@@ -6,7 +6,7 @@ COAL keeps a record of what you made with AI tools, why, and what is still open.
 
 1. A Claude Code session is captured by hooks. A manifest appears with your intent in your own words, the HTML you built as an artifact, and a next step.
 2. A different tool, connected over MCP, finds it with `coal_find` and reads the HTML.
-3. A new session in the same project shows "You left off at ..." before you type, and the model is told to offer to continue.
+3. A new session in the same project shows a banner with the intent and the next step before you type, and the model is told to offer to continue.
 4. `coal find budget` on the command line returns the same manifest.
 5. The web UI at `http://127.0.0.1:4242` shows the manifest with a preview of the HTML.
 
@@ -24,9 +24,9 @@ The capture step replays recorded Claude Code hook payloads from `testdata/claud
 
 ## What each step proves
 
-1. **Capture.** `scripts/replay-session.sh` feeds SessionStart, UserPromptSubmit, two PostToolUse writes, Stop and SessionEnd to `coal hook`. The check passes when there is exactly one manifest, and it has these properties. `intent.summary` is the user's first prompt with `source: user`. `budget.html` is registered as a `text/html` artifact. The project has a `.coal` marker naming the manifest, and the marker is listed in `.git/info/exclude`. The next step "add CSV export" comes from the last assistant message, because no model recorded one. This is definition-of-done step 1, with SessionEnd instead of Stop (#1).
+1. **Capture.** `scripts/replay-session.sh` feeds SessionStart, UserPromptSubmit, two PostToolUse writes, Stop and SessionEnd to `coal hook`. The check passes when there is exactly one manifest, and it has these properties. `intent.summary` is the user's first prompt with `source: user`. `budget.html` is registered as a `text/html` artifact. The project has a `.coal` marker naming the manifest, and the marker is listed in `.git/info/exclude`. SessionEnd only queues its event and returns, so the session's end is still waiting in the queue at this point (F5, ADR-016). Only files with the extensions in `captureExtensions` are captured, by default `.html`, `.md`, `.py`, `.ts` and `.tsx`. This is definition-of-done step 1, with SessionEnd instead of Stop (#1).
 2. **Another tool finds it.** The script starts `coal mcp`, sends `initialize`, calls `coal_find` with `budget` the way a model would phrase it, then calls `coal_read_artifact` on the result. It passes when the manifest comes back and the artifact text contains "Household budget". This is definition-of-done step 2.
-3. **Resume.** A new session starts in the project. `coal hook session-start` prints JSON whose `systemMessage` says `COAL: You left off at "add CSV export".` and whose `additionalContext` carries the intent, where it stands, the next step, the artifacts and the manifest id. Claude Code shows the `systemMessage` in the terminal before you type, and the model reads the context before its first reply. This is definition-of-done step 3 as rewritten in #3: a hook cannot produce an assistant turn before the user types, so the terminal line is the deterministic part and the model's offer to continue is the other.
+3. **Resume.** A new session starts in the project. `coal hook session-start` first folds the queue, including the previous session's end. Because no model recorded a next step, that fold takes "add CSV export" from the last assistant message. The hook then prints JSON whose `systemMessage` is the banner `COAL: Build me a household budget tracker as a single HTML page. Next: add CSV export.` and whose `additionalContext` carries the intent, where it stands, the next step, the artifacts and the manifest id. Claude Code shows the `systemMessage` in the terminal before you type, and the model reads the context before its first reply. This is definition-of-done step 3 as rewritten in #3: a hook cannot produce an assistant turn before the user types, so the terminal line is the deterministic part and the model's offer to continue is the other.
 4. **Command line.** `coal find budget` lists the manifest first. This is definition-of-done step 4.
 5. **Web UI.** `coal serve` runs on a free port on 127.0.0.1. The check passes when `/health` is ok, `/api/manifests?q=budget` returns the manifest, `/` serves the built UI with a Content-Security-Policy, and the artifact URL returns `text/html` with `Content-Security-Policy: sandbox`, so the HTML preview cannot run scripts against the UI. The server is stopped by its PID when the step ends. This is definition-of-done step 5.
 
@@ -91,7 +91,7 @@ In the session:
 1. Ask: "Build me a household budget tracker as a single HTML page." Let Claude write the file. If it ends with a line like "Next step: add CSV export", that becomes the next step. Otherwise ask it to record the next step with `coal_update_state` if you have connected the MCP server too.
 2. Exit with `/exit`.
 3. Look in `.sandbox/coal/manifests/`: there should be one manifest with your prompt as the intent and the HTML as an artifact. `.coal` should sit in the project directory.
-4. Start Claude Code again in the same directory with the same command. Before you type, the terminal should show a line starting `COAL: You left off at`. Send any message, and the first reply should offer to continue from that step.
+4. Start Claude Code again in the same directory with the same command. Before you type, the terminal should show a banner such as `COAL: <your request>. Next: <the next step>.` Send any message, and the first reply should offer to continue from that step.
 
 To remove the hooks: `.sandbox/bin/coal adapter uninstall claude-code --settings .sandbox/claude-config/settings.json`. A copy of the previous settings is kept next to the file as `settings.json.bak`.
 

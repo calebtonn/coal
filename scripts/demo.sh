@@ -45,9 +45,10 @@ else
 	m="${files[0]}"
 	id=$(jq -r .id "$m")
 	jq -r '"  intent:  \(.intent.summary) (source \(.intent.source))",
-		"  next:    \(.state.nextStep)",
 		(.artifacts[] | "  artifact: \(.title) \(.mime) \(.versions | length) version(s)")' "$m"
 	echo "  marker:  $(tr -d '\n ' <"$project/.coal")"
+	queued=("$COAL_HOME"/queue/*.json)
+	echo "  queued:  ${#queued[@]} event(s); SessionEnd only queues, and the next SessionStart folds it"
 	if [ "$(jq -r .intent.source "$m")" != user ]; then why="intent.source is not user"
 	elif ! jq -e '.artifacts[] | select(.title == "budget.html" and (.mime | startswith("text/html")))' "$m" >/dev/null; then why="no budget.html artifact"
 	elif ! grep -q "$id" "$project/.coal" 2>/dev/null; then why="no .coal marker for $id"
@@ -105,7 +106,24 @@ sed 's/^/    /' <<<"$ctx"
 if ! grep -q "add CSV export" <<<"$msg"; then why="systemMessage lacks 'add CSV export'"
 elif [ -z "$ctx" ] || ! grep -q "$id" <<<"$ctx"; then why="additionalContext missing or lacks the manifest id"
 fi
-check "3. SessionStart prints the next step and gives the model the context" "$([ -z "$why" ]; echo $?)" "$why"
+check "3a. Plain claude: SessionStart prints the next step and gives the model the context" "$([ -z "$why" ]; echo $?)" "$why"
+
+# (b) coal resume starts claude with the resume as the first turn. A
+# stand-in claude earlier on PATH records its argv instead of starting a
+# session, so the demo never touches a real Claude Code install.
+why=""
+fakebin="$demo/fakebin"
+argv="$demo/claude-argv.txt"
+mkdir -p "$fakebin"
+printf '#!/bin/sh\nfor a in "$@"; do printf "%%s\\n" "$a"; done > "%s"\n' "$argv" >"$fakebin/claude"
+chmod 700 "$fakebin/claude"
+(cd "$project" && PATH="$fakebin:$PATH" "$coal" resume) || why="coal resume exited $?"
+prompt=$(cat "$argv" 2>/dev/null)
+echo "  claude was started with: $prompt"
+if [ -z "$why" ] && ! grep -qi "left off at: add CSV export" <<<"$prompt"; then
+	why="the first prompt lacks the next step"
+fi
+check "3b. coal resume starts claude with a first prompt that opens from the next step" "$([ -z "$why" ]; echo $?)" "$why"
 
 step "4. coal find budget on the command line"
 why=""

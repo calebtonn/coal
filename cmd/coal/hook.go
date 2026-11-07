@@ -95,6 +95,12 @@ func runHook(home, name string, stdin io.Reader) ([]byte, error) {
 	if err := queue.Enqueue(home, e); err != nil {
 		return nil, err
 	}
+	// SessionEnd only queues (F5, ADR-016): its budget is 1.5 s and it
+	// must never wait on the lock or a fold. The daemon tick, the next
+	// SessionStart or coal queue drain folds it.
+	if e.Kind == capture.KindSessionEnd {
+		return nil, nil
+	}
 	f := &folder{home: home}
 	defer f.close()
 	if e.Kind != capture.KindSessionStart {

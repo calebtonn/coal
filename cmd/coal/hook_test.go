@@ -6,11 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/calebtonn/coal/internal/app"
+	"github.com/calebtonn/coal/internal/capture"
 	"github.com/calebtonn/coal/internal/metrics"
+	"github.com/calebtonn/coal/internal/queue"
 )
 
 // hookBudget is the hook time limit asserted in tests. The target is
@@ -76,7 +79,7 @@ func TestHookSession(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatalf("resume output %q: %v", out, err)
 	}
-	if res.SystemMessage != `COAL: You left off at "add CSV export".` || res.HookSpecificOutput.HookEventName != "SessionStart" ||
+	if res.SystemMessage != `COAL: Build me a household budget tracker as a single HTML page. Next: add CSV export.` || res.HookSpecificOutput.HookEventName != "SessionStart" ||
 		!strings.Contains(res.HookSpecificOutput.AdditionalContext, "budget.html") {
 		t.Errorf("resume: %+v", res)
 	}
@@ -221,5 +224,41 @@ func TestAdapterRoundTrip(t *testing.T) {
 	wb, _ := json.Marshal(wantv)
 	if !bytes.Equal(gb, wb) {
 		t.Errorf("after uninstall:\n%s\nwant\n%s", gb, wb)
+	}
+}
+
+func TestSessionEndOnlyQueues(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	t.Setenv("HOME", filepath.Join(base, "home"))
+	home := filepath.Join(base, "coal")
+	// An event already waiting must still be waiting after session-end:
+	// with the lock free, any drain would have folded it.
+	if err := queue.Enqueue(home, &capture.Event{Kind: capture.KindPrompt, SessionRef: "claude-code:session:x"}); err != nil {
+		t.Fatal(err)
+	}
+	project := filepath.Join(base, "budget")
+	if out, _ := hook(t, home, project, "session-end", "session-end.json"); out != "" {
+		t.Errorf("session-end printed %q", out)
+	}
+	if left, _ := filepath.Glob(filepath.Join(queue.Dir(home), "*.json")); len(left) != 2 {
+		t.Errorf("queue holds %d events, want 2", len(left))
+	}
+	// With another process holding the lock, it still returns at once.
+	f, err := os.OpenFile(filepath.Join(queue.Dir(home), ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	if _, took := hook(t, home, project, "session-end", "session-end.json"); took > hookBudget {
+		t.Errorf("session-end took %v with the lock held", took)
+	}
+	if left, _ := filepath.Glob(filepath.Join(queue.Dir(home), "*.json")); len(left) != 3 {
+		t.Errorf("queue holds %d events, want 3", len(left))
+	}
+	if _, err := os.Stat(filepath.Join(home, "index.db")); err == nil {
+		t.Error("session-end opened the app")
 	}
 }

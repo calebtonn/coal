@@ -167,7 +167,7 @@ func TestResumeOutput(t *testing.T) {
 	if err := json.Unmarshal(b, &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.SystemMessage != `COAL: You left off at "Add CSV export". 1 open question.` {
+	if out.SystemMessage != `COAL: Household budget tracker as a single HTML page. Next: Add CSV export. 1 open question.` {
 		t.Errorf("systemMessage: %q", out.SystemMessage)
 	}
 	ctx := out.HookSpecificOutput.AdditionalContext
@@ -185,11 +185,11 @@ func TestResumeOutput(t *testing.T) {
 	}
 
 	m.State.NextStep, m.State.OpenQuestions, m.Intent.Source = "", nil, manifest.SourceModel
-	if got := ResumeLine(m, m.ID[:10]); got != `COAL: Resuming "Household budget tracker as a single HTML page". coal rename `+m.ID[:10]+` "..." to fix the summary.` {
+	if got := ResumeLine(m, m.ID[:10]); got != `COAL: Household budget tracker as a single HTML page. coal rename `+m.ID[:10]+` "..." to fix the summary.` {
 		t.Errorf("model line: %q", got)
 	}
 	m.State.NextStep, m.State.OpenQuestions, m.Intent.Source = "x", []string{"a", "b"}, manifest.SourceUser
-	if got := ResumeLine(m, ""); got != `COAL: You left off at "x". 2 open questions.` {
+	if got := ResumeLine(m, ""); got != `COAL: Household budget tracker as a single HTML page. Next: x. 2 open questions.` {
 		t.Errorf("two questions: %q", got)
 	}
 
@@ -218,5 +218,14 @@ func TestIsWrapper(t *testing.T) {
 		if got := IsWrapper(in); got != want {
 			t.Errorf("IsWrapper(%q) = %v", in, got)
 		}
+	}
+}
+
+func TestBannerPunctuation(t *testing.T) {
+	m := manifest.New("Fix the login loop.", manifest.SourceUser, manifest.Provenance{Tool: "t"})
+	m.State.NextStep = "Should it retry?"
+	m.State.OpenQuestions = []string{"a"}
+	if got := ResumeLine(m, ""); got != "COAL: Fix the login loop. Next: Should it retry? 1 open question." {
+		t.Errorf("banner: %q", got)
 	}
 }
