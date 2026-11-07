@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -30,9 +31,10 @@ var hookEvents = map[string]string{
 	"session-end":        "SessionEnd",
 }
 
-// envSummarizer is set on the summarizer's own process, whose hooks
-// must capture nothing.
-const envSummarizer = "COAL_SUMMARIZER"
+// summarizerSkip logs the first hook skipped in this process because
+// summarize.EnvSummarizer is set, so an accidental export shows up in
+// coal.log.
+var summarizerSkip sync.Once
 
 // maxPayload caps hook stdin. Larger payloads are read to EOF and
 // dropped, so Claude Code never blocks writing to the hook.
@@ -58,8 +60,13 @@ func hookCmd() *cobra.Command {
 			// The opt-in summarizer runs claude -p, which is itself a
 			// Claude Code session with these hooks. Capturing it would
 			// queue another summarize job at its end, in a loop.
-			if os.Getenv(envSummarizer) != "" {
+			if os.Getenv(summarize.EnvSummarizer) == "1" {
 				io.Copy(io.Discard, stdin)
+				summarizerSkip.Do(func() {
+					if h, err := dataHome(); err == nil {
+						hookLog(h, "hook %s: skipped because %s=1 (the summarizer's own session); unset it if you exported it by accident", args[0], summarize.EnvSummarizer)
+					}
+				})
 				return nil
 			}
 			// Whatever happens, read stdin to EOF, never panic out, and
@@ -105,6 +112,9 @@ func runHook(home, name string, stdin io.Reader) ([]byte, error) {
 	if err != nil || e == nil {
 		return nil, err
 	}
+	// The hook runs in Claude Code's environment, so it knows which
+	// CLAUDE_CONFIG_DIR holds the transcript; the drain may not.
+	e.ProjectsRoot = summarize.ProjectsRoot()
 	if err := queue.Enqueue(home, e); err != nil {
 		return nil, err
 	}

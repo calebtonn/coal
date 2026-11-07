@@ -449,7 +449,7 @@ func TestSummarizeJob(t *testing.T) {
 		t.Fatalf("job queued without a summarizer: %v", files)
 	}
 	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
-	tp := transcript(t, tline("user", "Add a CSV export button to the page"))
+	tp := transcript(t, tline("user", "Add a CSV export button to the page"), tline("assistant", []any{map[string]any{"type": "text", "text": "Added the button."}}))
 	withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
 	// A transcript outside Claude Code's projects dir gets no job.
 	v.send("session-start-resume.json", "SessionStart", nil)
@@ -582,5 +582,62 @@ func TestTranscriptOutsideClaudeIsNotRead(t *testing.T) {
 	m := v.all()[0]
 	if strings.Contains(m.State.Summary, "hunter2") || m.State.NextStep != "add CSV export" {
 		t.Errorf("read a transcript outside ~/.claude/projects: %+v", m.State)
+	}
+}
+
+func TestTrivialSessionKeepsSummary(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	want := v.all()[0].State
+	// Session B: "hello", then exit. No file, no reply.
+	tp := transcript(t, tline("user", "hello there, just checking in"))
+	withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
+	v.send("session-start-resume.json", "SessionStart", nil)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", func(e *capture.Event) { withTP(e); e.Prompt = "hello there, just checking in" })
+	v.send("session-end.json", "SessionEnd", withTP)
+	if got := v.all()[0].State; got.Summary != want.Summary || got.NextStep != want.NextStep {
+		t.Errorf("a trivial session changed state:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+func TestSummarizerResultSurvivesReappliedEnd(t *testing.T) {
+	v := setup(t)
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	tp := transcript(t, tline("user", "Build the budget page"), tline("assistant", []any{map[string]any{"type": "text", "text": "Built it.\n\nNext step: add CSV export"}}))
+	withTP := func(e *capture.Event) { e.TranscriptPath = tp }
+	end := time.Now().UTC().Format(time.RFC3339)
+	atEnd := func(e *capture.Event) { withTP(e); e.At = end }
+	v.write("budget.html", "x")
+	v.send("session-start.json", "SessionStart", withTP)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", withTP)
+	v.send("post-tool-use-write.json", "PostToolUse", withTP)
+	v.send("session-end.json", "SessionEnd", atEnd)
+	jobs := func() []string {
+		f, _ := filepath.Glob(filepath.Join(summarize.Dir(v.a.Store.Dir()), "*.json"))
+		return f
+	}
+	if len(jobs()) != 1 {
+		t.Fatalf("jobs: %v", jobs())
+	}
+	// The summarizer runs the job, then deletes it, stamping after the end.
+	id := v.all()[0].ID
+	os.Remove(jobs()[0])
+	later, _ := json.Marshal(manifest.StateStamp{RecordedBy: summarize.Tool, At: time.Now().Add(5 * time.Second).UTC().Format(time.RFC3339)})
+	v.a.Update(id, 0, func(m *manifest.Manifest) error {
+		m.State.Summary, m.State.NextStep = "The summarizer's account.", "Wire up CSV export"
+		if m.Ext == nil {
+			m.Ext = map[string]json.RawMessage{}
+		}
+		m.Ext[manifest.StateExtKey] = later
+		return nil
+	}, op("test"))
+	// The same sessionEnd is applied again, say from queue/failed.
+	v.send("session-end.json", "SessionEnd", atEnd)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != "The summarizer's account." || m.State.NextStep != "Wire up CSV export" {
+		t.Errorf("re-applied sessionEnd undid the summarizer: %+v", m.State)
+	}
+	if len(jobs()) != 0 {
+		t.Errorf("re-queued a job: %v", jobs())
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -277,22 +278,109 @@ func TestSessionEndOnlyQueues(t *testing.T) {
 func TestHookSkipsSummarizerSessions(t *testing.T) {
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("HOME", filepath.Join(base, "home"))
-	t.Setenv("COAL_SUMMARIZER", "1")
 	home, project := filepath.Join(base, "coal"), filepath.Join(base, "budget")
 	os.MkdirAll(filepath.Join(project, ".git"), 0o755)
 	os.WriteFile(filepath.Join(project, "budget.html"), []byte("x"), 0o644)
-	for _, s := range [][2]string{
+	steps := [][2]string{
 		{"session-start", "session-start.json"}, {"user-prompt-submit", "user-prompt-submit.json"},
 		{"post-tool-use", "post-tool-use-write.json"}, {"stop", "stop.json"}, {"session-end", "session-end.json"},
-	} {
+	}
+	t.Setenv("COAL_SUMMARIZER", "1")
+	summarizerSkip = sync.Once{}
+	for _, s := range steps {
 		if out, _ := hook(t, home, project, s[0], s[1]); out != "" {
 			t.Errorf("%s printed %q", s[0], out)
 		}
 	}
-	if _, err := os.Stat(home); err == nil {
-		t.Errorf("the data dir was touched: %s exists", home)
+	// Only logs/coal.log exists in the data dir, with one line.
+	entries, _ := os.ReadDir(home)
+	log, _ := os.ReadFile(filepath.Join(home, "logs", "coal.log"))
+	if len(entries) != 1 || entries[0].Name() != "logs" || strings.Count(string(log), "COAL_SUMMARIZER=1") != 1 {
+		t.Errorf("data dir %v, log:\n%s", entries, log)
 	}
 	if _, err := os.Stat(filepath.Join(project, ".coal")); err == nil {
 		t.Error("wrote a marker")
+	}
+	// Any other value is not the summarizer: hooks capture as usual.
+	t.Setenv("COAL_SUMMARIZER", "yes")
+	for _, s := range steps {
+		hook(t, home, project, s[0], s[1])
+	}
+	if _, err := os.Stat(filepath.Join(project, ".coal")); err != nil {
+		t.Errorf("COAL_SUMMARIZER=yes stopped capture: %v", err)
+	}
+}
+
+// hookRun runs coal with stdin and returns combined output.
+func hookRun(t *testing.T, home, stdin string, args ...string) string {
+	t.Helper()
+	var out bytes.Buffer
+	root := rootCmd()
+	root.SetIn(strings.NewReader(stdin))
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs(append([]string{"--home", home}, args...))
+	if err := root.Execute(); err != nil {
+		t.Fatalf("coal %v: %v\n%s", args, err, out.String())
+	}
+	return out.String()
+}
+
+// TestDrainUsesHookProjectsRoot replays a session whose hooks ran with a
+// CLAUDE_CONFIG_DIR, then drains without it, as a daemon started from
+// another shell would.
+func TestDrainUsesHookProjectsRoot(t *testing.T) {
+	for _, withSummarizer := range []bool{false, true} {
+		base, _ := filepath.EvalSymlinks(t.TempDir())
+		t.Setenv("HOME", filepath.Join(base, "home"))
+		home, project, cfg := filepath.Join(base, "coal"), filepath.Join(base, "budget"), filepath.Join(base, "claude-config")
+		os.MkdirAll(filepath.Join(project, ".git"), 0o755)
+		os.WriteFile(filepath.Join(project, "budget.html"), []byte("x"), 0o644)
+		tdir := filepath.Join(cfg, "projects", "-budget")
+		os.MkdirAll(tdir, 0o700)
+		tp := filepath.Join(tdir, "s.jsonl")
+		line := func(typ string, content any) string {
+			b, _ := json.Marshal(map[string]any{"type": typ, "sessionId": "s", "timestamp": "2026-11-06T10:00:00Z", "message": map[string]any{"id": typ, "content": content}})
+			return string(b) + "\n"
+		}
+		os.WriteFile(tp, []byte(line("user", "Build me a household budget tracker as a single HTML page")+
+			line("assistant", []any{map[string]any{"type": "tool_use", "name": "Write", "input": map[string]any{"file_path": filepath.Join(project, "budget.html")}},
+				map[string]any{"type": "text", "text": "Built the page.\n\nNext step: add CSV export"}})), 0o600)
+		hookRun(t, home, "", "init")
+		if withSummarizer {
+			os.WriteFile(filepath.Join(home, "config.json"), []byte(`{"summarizer": {"command": ["sh", "-c", "cat >/dev/null; printf 'Summary: From the summarizer.\\nNext step: add charts\\n'"]}}`), 0o600)
+		}
+		payload := func(event string, extra map[string]any) string {
+			p := map[string]any{"session_id": "abc", "transcript_path": tp, "cwd": project, "hook_event_name": event}
+			for k, v := range extra {
+				p[k] = v
+			}
+			b, _ := json.Marshal(p)
+			return string(b)
+		}
+		t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+		hookRun(t, home, payload("SessionStart", map[string]any{"source": "startup"}), "hook", "session-start")
+		hookRun(t, home, payload("UserPromptSubmit", map[string]any{"prompt": "Build me a household budget tracker as a single HTML page"}), "hook", "user-prompt-submit")
+		hookRun(t, home, payload("PostToolUse", map[string]any{"tool_name": "Write", "tool_input": map[string]any{"file_path": filepath.Join(project, "budget.html")}}), "hook", "post-tool-use")
+		hookRun(t, home, payload("SessionEnd", map[string]any{"reason": "prompt_input_exit"}), "hook", "session-end")
+
+		t.Setenv("CLAUDE_CONFIG_DIR", "")
+		out := hookRun(t, home, "", "queue", "drain")
+		a, err := app.Open(home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ms, _ := a.Store.List()
+		a.Close()
+		if len(ms) != 1 {
+			t.Fatalf("summarizer %v: %d manifests", withSummarizer, len(ms))
+		}
+		st := ms[0].State
+		switch {
+		case !withSummarizer && (st.Summary != "Built the page. Files touched: budget.html" || st.NextStep != "add CSV export"):
+			t.Errorf("extraction did not read the transcript: %+v", st)
+		case withSummarizer && (!strings.Contains(out, "summarized 1 sessions") || st.Summary != "From the summarizer."):
+			t.Errorf("the job was not queued and run: %q, %+v", out, st)
+		}
 	}
 }

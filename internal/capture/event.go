@@ -32,6 +32,9 @@ type Event struct {
 	TranscriptPath       string `json:"transcriptPath,omitempty"`
 	Reason               string `json:"reason,omitempty"`
 	Source               string `json:"source,omitempty"`
+	// ProjectsRoot is where the tool keeps its transcripts, as the hook
+	// saw it. A drain may run with a different environment.
+	ProjectsRoot string `json:"projectsRoot,omitempty"`
 }
 
 // truncate cuts s to at most n characters.

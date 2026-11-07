@@ -42,6 +42,7 @@ type Session struct {
 	ManifestID           string `json:"manifestID,omitempty"`
 	LastAssistantMessage string `json:"lastAssistantMessage,omitempty"`
 	TranscriptPath       string `json:"transcriptPath,omitempty"`
+	ProjectsRoot         string `json:"projectsRoot,omitempty"`
 	StartedAt            string `json:"startedAt"`
 	EndedAt              string `json:"endedAt,omitempty"`
 	// RecordedByModel is set at sessionEnd when the manifest's state
@@ -80,6 +81,9 @@ func Apply(a *app.App, e *capture.Event) error {
 	}
 	if e.TranscriptPath != "" {
 		s.TranscriptPath = e.TranscriptPath
+	}
+	if e.ProjectsRoot != "" {
+		s.ProjectsRoot = e.ProjectsRoot
 	}
 	switch e.Kind {
 	case capture.KindSessionStart:
@@ -308,7 +312,20 @@ func closeOut(a *app.App, s *Session) error {
 		s.RecordedByModel = true
 		return nil
 	}
-	sum, next := extract(a, s)
+	// The summarizer already ran after this session ended: applying the
+	// sessionEnd again must not undo its result or pay for another call.
+	// Strictly after, because stamps have one-second precision and a
+	// summarizer run for an earlier session can land in the second this
+	// one ends; a run for this session takes longer than that.
+	if st, ok := manifest.StateStampOf(m); ok && st.RecordedBy == summarize.Tool && s.EndedAt != "" && st.At > s.EndedAt {
+		return nil
+	}
+	sum, next, worked := extract(a, s)
+	// A session that wrote nothing and got no reply, such as "hello"
+	// then exit, has nothing to say about where the work stands.
+	if !worked {
+		return nil
+	}
 	if sum != "" || next != "" {
 		if err := applyState(a, s, sum, next); err != nil {
 			return err
@@ -329,11 +346,11 @@ func queueSummarizer(a *app.App, s *Session) {
 	if cfg == nil {
 		return
 	}
-	if !summarize.AllowedTranscript(s.TranscriptPath) {
+	if !allowedTranscript(s) {
 		a.Store.Log("capture: no summarize job for %s: transcript is not a Claude Code session file", s.SessionRef)
 		return
 	}
-	j := summarize.Job{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt, EndedAt: s.EndedAt}
+	j := summarize.Job{ManifestID: s.ManifestID, SessionRef: s.SessionRef, TranscriptPath: s.TranscriptPath, StartedAt: s.StartedAt, EndedAt: s.EndedAt, ProjectsRoot: s.ProjectsRoot}
 	if err := queueJob(a.Store.Dir(), j); err != nil {
 		a.Store.Log("capture: summarize job for %s: %v", s.SessionRef, err)
 	}
@@ -400,20 +417,29 @@ const MaxFilesTouched = 5
 // "Files touched: a, b" with at most five base names. Otherwise, or if
 // the transcript cannot be read, it uses the last assistant message
 // that Stop delivered.
-func extract(a *app.App, s *Session) (summary, nextStep string) {
+func extract(a *app.App, s *Session) (summary, nextStep string, worked bool) {
 	summary, nextStep = capture.ExtractState(s.LastAssistantMessage)
+	worked = s.Wrote || s.LastAssistantMessage != ""
 	// Only Claude Code's own session files are read, so a payload cannot
 	// point extraction at any other file.
-	if s.TranscriptPath == "" || !summarize.AllowedTranscript(s.TranscriptPath) {
-		return summary, nextStep
+	if s.TranscriptPath == "" || !allowedTranscript(s) {
+		return summary, nextStep, worked
 	}
 	if _, err := os.Lstat(s.TranscriptPath); err != nil && s.LastAssistantMessage != "" {
-		return summary, nextStep
+		return summary, nextStep, worked
 	}
-	tsum, tnext, files, err := summarize.FromTranscript(s.TranscriptPath, MaxTranscript)
+	t, err := summarize.ReadFile(s.TranscriptPath, MaxTranscript)
 	if err != nil {
 		a.Store.Log("capture: transcript for %s: %v", s.SessionRef, err)
-		return summary, nextStep
+		return summary, nextStep, worked
+	}
+	worked = worked || t.LastAssistant != "" || len(t.Files) > 0
+	// As in summarize.FromTranscript: the prompt fallback must pass the
+	// summary filter (#11). This reads the transcript itself because it
+	// also needs to know whether there was an assistant reply.
+	tsum, tnext := capture.ExtractState(t.LastAssistant)
+	if _, ok := capture.PickSummary(t.LastPrompt()); tsum == "" && ok {
+		tsum = summarize.Cut(t.LastPrompt(), capture.MaxStateSummary)
 	}
 	if tsum != "" {
 		summary = tsum
@@ -421,10 +447,17 @@ func extract(a *app.App, s *Session) (summary, nextStep string) {
 	if tnext != "" {
 		nextStep = tnext
 	}
-	if names := baseNames(files, MaxFilesTouched); len(names) > 0 {
+	if names := baseNames(t.Files, MaxFilesTouched); len(names) > 0 {
 		summary = strings.TrimSpace(summary + " Files touched: " + strings.Join(names, ", "))
 	}
-	return summary, nextStep
+	return summary, nextStep, worked
+}
+
+// allowedTranscript reports whether the session's transcript is a Claude
+// Code session file that capture may read, under this process's
+// projects dir or the one the hook recorded.
+func allowedTranscript(s *Session) bool {
+	return summarize.AllowedTranscript(s.TranscriptPath, s.ProjectsRoot)
 }
 
 // baseNames returns up to n distinct base names from paths, in order.
