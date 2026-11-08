@@ -1,4 +1,4 @@
-# COAL POC demo
+# COAL demo
 
 ## What the demo shows
 
@@ -18,9 +18,9 @@ Everything runs locally inside the repo's `.sandbox/` directory. Nothing touches
 scripts/demo.sh        # or: make demo
 ```
 
-The script builds the web UI and the binary (set `SKIP_BUILD=1` to skip that), then creates a fresh `.sandbox/demo-<timestamp>/` holding a data dir `coal/` and a project `projects/budget`. It prints a numbered heading, details and a PASS or FAIL line for each step. At the end it prints hook timings, the `coal stats` counters and a summary. It exits non-zero if any step fails.
+The script builds the web UI and the binary (set `SKIP_BUILD=1` to skip that; without the sibling `web-framework` checkout the UI build fails, so run `make build` first and set `SKIP_BUILD=1`, see #26 and the Commands section of `CLAUDE.md`), then creates a fresh `.sandbox/demo-<timestamp>/` holding a data dir `coal/` and a project `projects/budget`. It prints a numbered heading, details and a PASS or FAIL line for each step. At the end it prints hook timings, the `coal stats` counters and a summary. It exits non-zero if any step fails.
 
-The capture step replays recorded Claude Code hook payloads from `testdata/claude-code/` through the real `coal hook` commands. It does not start Claude Code. A live run is described below and is optional.
+The capture step replays recorded Claude Code hook payloads from `testdata/claude-code/` through the real `coal hook` commands. It does not start Claude Code. A live run is described below. It is optional, and it was done on macOS on 2026-11-07 with Claude Code 2.1.312.
 
 ## What each step proves
 
@@ -30,7 +30,7 @@ The capture step replays recorded Claude Code hook payloads from `testdata/claud
 
    Then `coal resume` runs in the project with a stand-in `claude` first on `PATH`, a script that writes its arguments to a file instead of starting a session. `coal resume` matches the manifest the same way the hook does and replaces itself with `claude "<prompt>"`, where the prompt reads `Resume my work on: <intent>. Last time we left off at: add CSV export. Start by telling me in one sentence where I left off and ask whether to continue.` The step passes when the recorded prompt carries the next step. With the real `claude`, that prompt is the first user turn, so the first assistant turn is the resume. This is step 3(b), the form the definition of done uses. The demo proves the deterministic half: the right manifest is found and `claude` is started with a prompt that carries the next step. That the model's first reply then says where you left off is only checked in the live run below.
 4. **Command line.** `coal find budget` lists the manifest first. This is definition-of-done step 4.
-5. **Web UI.** `coal serve` runs on a free port on 127.0.0.1. The check passes when `/health` is ok, `/api/manifests?q=budget` returns the manifest, `/` serves the built UI with a Content-Security-Policy, and the artifact URL returns `text/html` with `Content-Security-Policy: sandbox`, so the HTML preview cannot run scripts against the UI. The server is stopped by its PID when the step ends. This is definition-of-done step 5.
+5. **Web UI.** `coal serve` runs on a free port on 127.0.0.1. The check passes when `/health` is ok, `/api/manifests?q=budget` returns the manifest, `/` serves the built UI with a Content-Security-Policy, and the artifact URL returns `text/html` with `Content-Security-Policy: sandbox`, so the HTML preview cannot run scripts against the UI. Without the sibling `web-framework` checkout the UI does not build (#26): `scripts/demo.sh` then stops at the build, and with `SKIP_BUILD=1` and a binary from `make build` alone this check fails, because `/` serves the page saying the UI is not built. The server is stopped by its PID when the step ends. This is definition-of-done step 5.
 
 ## Try it by hand
 
@@ -76,7 +76,7 @@ The scripts refuse a `COAL_HOME` or `PROJECT` outside `.sandbox/` unless `COAL_A
 
 ## Optional: a live Claude Code run in a sandbox
 
-This step uses Dave's Claude Code account, so it is left for him to run. A fresh `CLAUDE_CONFIG_DIR` has no login, so Claude Code asks you to sign in the first time. That is the reason it is not part of `scripts/demo.sh`.
+This step uses your own Claude Code account, which is why it is not part of `scripts/demo.sh`. A fresh `CLAUDE_CONFIG_DIR` has no login, so Claude Code asks you to sign in the first time. It was run once, on macOS on 2026-11-07 with Claude Code 2.1.312: the hooks captured the manifest, the model recorded state over MCP with `coal_update_state`, the plain second session offered to continue, and `coal resume` started a session whose first reply resumed.
 
 ```
 make build
@@ -119,7 +119,7 @@ This makes a model call that you have configured, using the command you name and
 
 Jobs run only in the daemon and in `coal queue drain`, never inside a hook. A session where the model recorded its own state is skipped. A failed run, a timeout or output without a `Summary:` line writes nothing. The job moves to `queue/summarize/failed/`, and one line goes to `logs/coal.log` without any transcript text. Remove the key, or set it to `false`, to turn the summarizer off.
 
-## Not in the POC yet
+## Not covered yet
 
-- Import from chat apps such as claude.ai and ChatGPT. Only Claude Code transcripts on disk are covered (M10).
+- Import from chat apps such as claude.ai and ChatGPT. Only Claude Code transcripts on disk are covered, by `coal import claude-code` (M10 in `PLAN.md`).
 - Cursor and Codex adapters. The capture contract (ADR-011) is ready for them, but only Claude Code is wired.

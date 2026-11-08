@@ -237,7 +237,7 @@ Storage is file-first. The ER diagram describes the shape, not a relational sche
 | SQLite FTS5 | Zero-dependency full-text search, fast enough for years of use on one machine. |
 | MCP as the primary interface | It is the one protocol every AI tool is adopting. Building to it means COAL works with tools that do not exist yet. |
 | Claude Code hooks for first capture | Deterministic lifecycle hooks, no browser hacks. Cursor, Codex CLI and Gemini CLI have hooks too; one adapter is enough to test the record, and the capture contract in ADR-011 keeps the next ones cheap. |
-| Go, one binary (ADR-018, supersedes ADR-005) | The proof of concept on `poc/go` ran the whole definition of done, so main adopted it on 2026-11-07. One static binary with pure-Go SQLite (no cgo) is what hooks that must finish in milliseconds, a daemon and an MCP server all want; there is no runtime or native build to install. |
+| Go, one binary (ADR-018, supersedes ADR-005) | The proof of concept on `poc/go` ran every step of the definition of done (the web UI check passes only where the UI builds, #26), so `main` adopted it on 2026-11-07 (PR 29). One static binary with pure-Go SQLite (no cgo) is what hooks that must finish in milliseconds, a daemon and an MCP server all want; there is no runtime or native build to install. |
 | Artifacts identified by (manifest, uri) with `versions[]` (ADR-019) | A file that is edited again is the same artifact with a new version, not a second artifact. Every addition to schema 0.1 for this (`rev`, `versions[]`, `skipped`, artifact `ext`) is optional, so simple readers keep using the top-level fields. |
 
 ## Phase map
@@ -245,7 +245,7 @@ Storage is file-first. The ER diagram describes the shape, not a relational sche
 ```mermaid
 flowchart LR
     P1["Phase 1: Record<br/>capture + find + resume<br/>(this MVP)"]
-    P2["Phase 2: Reach<br/>Cursor and Codex adapters, coal import<br/>chat apps, semantic search"]
+    P2["Phase 2: Reach<br/>Cursor and Codex adapters, coal import from<br/>chat exports, semantic search"]
     P3["Phase 3: Attention<br/>policy engine, interrupt gating<br/>Slack + calendar + IDE presence"]
     P4["Phase 4: Portability<br/>encrypted sync, export,<br/>spec v1.0 with other implementers"]
     P1 --> P2 --> P3 --> P4

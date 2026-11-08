@@ -19,7 +19,7 @@ The stack is fixed. ADR-018 is the decision that set it; a change to it goes thr
 - Daemon: `net/http`, bound to `127.0.0.1:4242`
 - MCP: the official Go SDK, `github.com/modelcontextprotocol/go-sdk` v1.8.0, stdio transport
 - Storage: JSON files under the data dir as source of truth; SQLite (`modernc.org/sqlite`, pure Go, no cgo) with FTS5 as a derived index
-- Validation: JSON Schema 2020-12 in `spec/intent-manifest.schema.json`, embedded in the binary and checked with `github.com/santhosh-tekuri/jsonschema`
+- Validation: JSON Schema 2020-12 in `spec/intent-manifest.schema.json`, embedded in the binary and checked with `github.com/santhosh-tekuri/jsonschema/v6`
 - Web UI: Svelte 5 under `web/`, built with Bun, embedded in the binary with `go:embed`, served at `http://127.0.0.1:4242`
 - Build, test, demo: Makefile
 - Tests: `go test`; Vitest for the web UI
@@ -59,9 +59,9 @@ Set by `COAL_HOME` or the `--home` flag; the default is `~/.coal`.
   artifacts/<sha256>           content-addressed artifact bodies
   index.db                     SQLite, rebuildable from manifests/
   .git/                        history of manifests/
-  queue/                       hook events awaiting fold; queue/summarize/ holds summarize jobs
+  queue/                       hook events awaiting fold; queue/failed/ holds events whose fold failed, queue/summarize/ holds summarize jobs
   sessions/                    per-session capture scratch
-  tmp/                         copies made by coal open
+  tmp/                         copies made by coal open; work dirs for summarize jobs
   trash/
   logs/                        daemon.log, mcp.log, coal.log, metrics.jsonl
 ```
@@ -76,14 +76,15 @@ The Makefile looks for Go at `~/.local/go/bin/go`. Point `GO=` at your Go 1.27 i
 make GO=/path/to/go build   # builds .sandbox/bin/coal
 make test
 make vet
-make demo                   # the five definition-of-done steps in a fresh .sandbox/demo-*/
+make demo                   # runs make web build, then the five definition-of-done steps in a fresh .sandbox/demo-*/
+SKIP_BUILD=1 make demo      # the same without rebuilding; use it after make build when the UI cannot be built
 make web                    # builds the UI; needs Bun and the sibling web-framework checkout
 make e2e                    # builds the UI and the binary, then drives the UI in headless Chromium
 ```
 
 The scripts need GNU bash 4+ and GNU coreutils. On macOS, `brew install bash coreutils` and put them first on `PATH`.
 
-`make web` and `make e2e` need `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo; the package is not published. Without it the binary still builds, and `/` serves a page saying the UI is not built.
+`make web`, `make e2e` and a plain `make demo` need `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo; the package is not published (#26). Without it the binary still builds, `/` serves a page saying the UI is not built, and the demo runs as `SKIP_BUILD=1 make demo` after `make build`, where steps 1 to 4 pass and step 5 fails on the UI check.
 
 Run the binary as `.sandbox/bin/coal` with `COAL_HOME` set, or pass `--home`:
 
@@ -108,7 +109,7 @@ Nothing beyond that is in scope for the MVP. Interrupt gating, browser capture, 
 
 ## Intent summaries: who writes them
 
-`intent.summary` is the user's words by default. The Claude Code adapter sets it from the user's first message of the session (trimmed to 200 characters). A better summary and a `goal` can be proposed in two ways: by the model through `coal_update_state` during the session, or by deterministic extraction from the transcript when the `SessionEnd` event is folded. Nothing is parsed at `Stop`, which fires after every assistant turn. A proposal is written to `intent.goal` and `state.summary`, never over `intent.summary`, unless the user confirms. When `config.summarizer` is set, the fold queues a summarize job that only the daemon or `coal queue drain` runs later, and its result replaces the extraction (ADR-016). Every manifest records `intent.source` as `user` or `model` so search can prefer user-written summaries. This is deliberate: a record in the user's own words compounds; a pile of model paraphrases does not.
+`intent.summary` is the user's words by default. The Claude Code adapter sets it from the user's first message of the session (trimmed to 200 characters). A better summary and a next step can be proposed in two ways: by the model through `coal_update_state` during the session, which can also set `intent.goal`, or by deterministic extraction from the transcript when the `SessionEnd` event is folded. Nothing is parsed at `Stop`, which fires after every assistant turn. A proposal is written to `state.summary` and `state.nextStep` (and `intent.goal` when the model sets one), never over `intent.summary`, unless the user confirms. When `config.summarizer` is set, the fold queues a summarize job that only the daemon or `coal queue drain` runs later, and its result replaces the extraction (ADR-016). Every manifest records `intent.source` as `user` or `model` so search can prefer user-written summaries. This is deliberate: a record in the user's own words compounds; a pile of model paraphrases does not.
 
 ## Positioning (so the code matches the pitch)
 

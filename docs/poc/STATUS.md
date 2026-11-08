@@ -1,12 +1,28 @@
-# COAL POC status
+# COAL status
 
-Updated 2026-11-05. Branch `poc/go`, pushed to `origin` on Dave's request (2026-11-05), not merged and no PR. Data dir for all testing: `.sandbox/coal` (excluded from git).
+Updated 2026-11-07. The proof of concept is merged. PR 29 merged `adopt-go` into `main` as `1ffd071`, with ADR-018 (stack and layout, supersedes ADR-005) and ADR-019 (schema 0.1 additions and artifact identity). Issues #5, #6 and #7 are closed as resolved by ADR-019. `poc/go` (last commit `d041c64`) is history: nothing is committed there any more, and work goes through GitHub issues and pull requests to `main` (`CONTRIBUTING.md`).
 
-## Summary
+On 2026-11-07 the code was built from a fresh clone on macOS: build and `go vet` clean; `make test` has three failing packages, all macOS-specific (#22, #23, #24); demo steps 1, 2, 3a, 3b and 4 pass with GNU bash 4+ and GNU coreutils, and step 5 fails only on the UI check, because the web UI needs the unpublished `@davenicoll/web-framework` sibling checkout (#26). The live Claude Code run in `DEMO.md` was done the same day with Claude Code 2.1.312: the hooks captured a manifest, the model recorded state over MCP with `coal_update_state`, a plain second session got the resume context and offered to continue, and `coal resume` started a third session whose first reply resumed. `coal import claude-code` works on non-symlinked paths. There is no release and no install path: `coal` is built from source with `make GO=/path/to/go build` and `coal version` prints `coal 0.1.0-poc (go1.27.3)`.
+
+Bugs found that day, one GitHub issue each, none fixed yet, each for its own PR to `main`:
+
+- #20 a chat-only later session overwrites the model-recorded `state.summary`
+- #21 `session_attached` and `resume_acted` count only file writes and `resume_shown` counts every SessionStart source, so the two gate ratios read 0%
+- #22 artifact MIME comes from the host mime.types (`.md` is text/plain on macOS, `.ts` is video/mp2t)
+- #23 the importer resolves symlinks too late; projects under /tmp or /var on macOS lose artifacts on import
+- #24 `sensitiveLocation` compares against an unresolved home, the `/proc` test is Linux-only, no macOS Library paths
+- #25 the Makefile hardcodes `~/.local/go`; the scripts need GNU bash 4.1+ and coreutils; DEMO.md lists no prerequisites
+- #26 the web UI depends on the unpublished `@davenicoll/web-framework`
+- #27 the `.coal` marker `$schema` URL returns 404
+- #28 `intent.summary` is a hard 200-character word cut
+
+The log below is the proof-of-concept record as of 2026-11-05 and is kept as written. The data dir for all of that testing was `.sandbox/coal` (excluded from git).
+
+## Summary at 2026-11-05, on `poc/go`
 
 The POC works end to end and passed the Fable 5.1 review gate. `make demo` runs the five definition-of-done steps from a fresh sandbox and passes all of them, twice in a row. `make e2e` passes in headless Chromium with no CSP violations. All Go packages pass under `-race`, and the web unit tests and svelte-check are clean. Every planned milestone, M0 to M10, is done, and every issue (#1 to #9, #11 to #15) is implemented. Three Fable 5.1 reviewers checked the build twice. They found three high findings, all fixed, plus mediums and lows, also fixed, and then confirmed the fixes.
 
-Try it: `make demo`, or follow `docs/poc/DEMO.md`. The one thing not run is a live Claude Code session. It needs a login in a sandboxed `CLAUDE_CONFIG_DIR`, so DEMO.md leaves it to Dave.
+Try it: `make demo`, or follow `docs/poc/DEMO.md`. The one thing not run at that point was a live Claude Code session: it needs a login in a sandboxed `CLAUDE_CONFIG_DIR`, so DEMO.md left it to Dave. It was run on 2026-11-07 from a fresh clone on macOS; see the update at the top and ADR-018.
 
 ## Done
 
@@ -59,15 +75,15 @@ Try it: `make demo`, or follow `docs/poc/DEMO.md`. The one thing not run is a li
 
 - Nothing.
 
-## Next, for Dave
+## Next
 
-- Run the live Claude Code session in `docs/poc/DEMO.md` (needs a login in the sandboxed config dir).
-- Decide on the stretch items: Cursor or Codex adapter, opt-in model summarizer, chat-app import.
-- Review the `CLAUDE.md` purge line (`a1a7969`) and revert it if you prefer.
+- Fix the nine bugs from the 2026-11-07 run, one issue and one PR to `main` each: #20 to #28.
+- Then the Phase 1 gate week (T14 in `docs/05-MVP-TASKS.md`), which has not started.
+- Still open from the proof of concept: a Cursor or Codex adapter, and import from chat apps. The opt-in model summarizer landed in M11 as `config.summarizer`. The `CLAUDE.md` purge line (`a1a7969`) is on `main`.
 
 ## Issues
 
-Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay open; nothing is closed or commented on.
+Order from Dave, 2026-11-04, while the work was on `poc/go`: implement every issue locally; GitHub issues stayed open and nothing was closed or commented on from the branch. Since the merge (PR 29, 2026-11-07), #5, #6 and #7 are closed as resolved by ADR-019.
 
 | Issue | Status | Commits |
 |---|---|---|
@@ -97,9 +113,9 @@ Order from Dave, 2026-11-04: implement every issue locally. GitHub issues stay o
 
 - M4 daemon CSP for `index.html`: `default-src 'self'; script-src 'self' 'sha256-...'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'none'`. Compute the script hash at startup from the inline `data-wf-theme-init` script in the embedded `index.html`, because it changes when the framework changes. If a browser reports style violations, add `'unsafe-inline'` to `style-src` only.
 
-- Go is at `~/.local/go/bin`; the Makefile adds it to PATH.
+- The Makefile looks for Go at `~/.local/go/bin/go` and adds that directory to PATH; on a machine with Go elsewhere pass `GO=/path/to/go` (#25).
 - Every manifest object keeps unknown fields on rewrite (`a914546`).
 - One builder ran `rm -r` on two empty temp directories it had just created in `/tmp`, outside the allowed paths. No data was involved.
 - Old `.sandbox/demo-*`, `.sandbox/e2e-*` and `.sandbox/review-*` directories accumulate. They are safe to delete; everything under `.sandbox/` is scratch.
 - The web UI uses Svelte 5 with `@davenicoll/web-framework` from the sibling checkout `../web-framework`, installed with Bun (Dave, 2026-11-04). pnpm is not needed.
-- A live Claude Code run would use Dave's account, so it stays optional and waits for his go-ahead. Recorded hook payloads under `testdata/claude-code/` are the test path.
+- A live Claude Code run uses the account of whoever runs it, so it is not part of `scripts/demo.sh`; it has been run once, on macOS on 2026-11-07 with Claude Code 2.1.312. Recorded hook payloads under `testdata/claude-code/` are the test path.
