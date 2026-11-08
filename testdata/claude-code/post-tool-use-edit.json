@@ -1,0 +1,22 @@
+{
+  "session_id": "7c1f3e2a-5b4d-4e8f-9a01-2b3c4d5e6f70",
+  "transcript_path": "/PROJECT/.claude-projects/-PROJECT-budget/7c1f3e2a-5b4d-4e8f-9a01-2b3c4d5e6f70.jsonl",
+  "cwd": "/PROJECT/budget",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/PROJECT/budget/budget.html",
+    "old_string": "<p>Total: <span id=\"total\">0</span></p>",
+    "new_string": "<p>Total: <span id=\"total\">0</span></p>\n<button id=\"add\">Add row</button>",
+    "replace_all": false
+  },
+  "tool_response": {
+    "filePath": "/PROJECT/budget/budget.html",
+    "oldString": "<p>Total: <span id=\"total\">0</span></p>",
+    "newString": "<p>Total: <span id=\"total\">0</span></p>\n<button id=\"add\">Add row</button>",
+    "replaceAll": false
+  },
+  "tool_use_id": "toolu_01Edit00000000000000000",
+  "duration_ms": 4
+}

@@ -38,6 +38,8 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-005: TypeScript monorepo
 
+**Status.** Superseded by ADR-018 on 2026-11-07. The text below is kept as written.
+
 **Context.** MCP SDK, Claude Code hook scripting, and the web UI are all most natural in TypeScript.
 
 **Decision.** One language. pnpm workspaces with exactly two packages: `diamond` (library) and `coal` (the installable, which runs the daemon, MCP server and hooks as subcommands and serves the web UI). Six packages were the first draft; collapsed because a solo nights-and-weekends build should spend its hours on the demo, not on workspace plumbing.
@@ -62,7 +64,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-008: COAL is a record of work, not a memory
 
-**Context.** Mem0 OpenMemory, OpenPortable, and the platforms' built-in memory all store facts, preferences, or session notes across tools. Positioning COAL as "memory" invites a direct comparison on their terms and loses.
+**Context.** Mem0 OpenMemory and the platforms' built-in memory store facts, preferences, or session notes across tools. Positioning COAL as "memory" invites a direct comparison on their terms and loses.
 
 **Decision.** COAL stores what the user made, why, and what is still open: intent, content-addressed artifacts with provenance, open loops, and contexts. It does not store facts about the user. It is designed to sit on top of a fact store rather than replace one; a future adapter may read user preferences from OpenMemory to improve summaries and surfacing.
 
@@ -106,25 +108,25 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-013: The project directory anchors the intent
 
-**Status.** Accepted 2026-11-05, with the `markers` setting. Resolves #4.
+**Status.** Accepted 2026-11-05, with the `markers` setting. Resolves #4. Marker shape and schema URL filled in on 2026-11-07 from the implementation (ADR-018).
 
 **Context.** Sessions are not intents. One session can touch several intents, and one intent runs across many sessions and tools. Matching sessions to manifests is the hardest part of capture, and the current spec leaves it open (#4). For coding work there is already a boundary the user chose: the project directory. F5 mentions a `.coal` marker file but nothing defines it.
 
-**Decision.** On the first capture in a directory, COAL writes a `.coal` file at the git top level (or cwd when there is no repo) holding `{"$schema": "...", "manifest": "<id>"}` and nothing else. Every later session from any tool in that directory or below attaches to that manifest. The manifest itself stays in `~/.coal/manifests/`, so there is still one source of truth (ADR-001). By default the marker is listed in `.git/info/exclude`; the user can choose to commit it. `coal new` in a directory with a marker creates a second manifest and makes it the active one; the marker then holds `active` plus a list. Optionally, `coal adapter install` adds one line to the project's `AGENTS.md` or `CLAUDE.md` telling agents to call `coal_get` with the id in `.coal` at the start of work, so agents with no COAL adapter can still resume.
+**Decision.** On the first capture in a directory, COAL writes a `.coal` file at the git top level (or cwd when there is no repo) holding `{"$schema": "https://coalmine.io/schema/coal-marker/0.1.json", "manifest": "<id>"}` and nothing else. The marker schema URL is what COAL writes; it is not yet published (the path returns 404), which is tracked as an issue. Every later session from any tool in that directory or below attaches to that manifest. The manifest itself stays in `~/.coal/manifests/`, so there is still one source of truth (ADR-001). By default the marker is listed in `.git/info/exclude`; the user can choose to commit it. `coal new` in a directory with a marker creates a second manifest and makes it the active one; the marker then holds `{"manifest": "<active id>", "manifests": ["<id>", ...]}`, where `manifest` is the active one and `manifests` lists every manifest anchored in the directory. Optionally, `coal adapter install` adds one line to the project's `AGENTS.md` or `CLAUDE.md` telling agents to call `coal_get` with the id in `.coal` at the start of work, so agents with no COAL adapter can still resume.
 
 **Consequences.** Identity for coding work is deterministic and needs no model. Chat work has no directory and still relies on grouping (ADR-012). COAL writes a file into user projects, which some people will not want, so `markers: "project" | "none"` is a setting, with `none` falling back to `contexts[]` path matching.
 
 ## ADR-014: Keep history of manifest changes
 
-**Status.** Accepted 2026-11-05 with two constraints: commits never run inside a hook (SessionEnd has a 1.5 s budget); the daemon or queue worker commits, debounced, under the same per-manifest lock as the write (#6). Uses the `git` on PATH; if none, skip silently. Lands in T11.
+**Status.** Accepted 2026-11-05. Status and decision reworded on 2026-11-07 to describe the implementation (ADR-018). Two constraints: a hook never runs git (SessionEnd has a 1.5 s budget), it only marks `.history-pending` through deferred history; the daemon tick commits `manifests/` in a batch under the store-wide `.git.lock` once that marker has been quiet for two seconds, and `coal queue drain` or any non-hook CLI command commits what is pending as soon as it opens the store. Uses the `git` on PATH; if none, skip silently. Landed in the proof of concept (M11).
 
 **Context.** Manifests are mutable. `nextStep`, `status` and `openQuestions` are overwritten in place, so there is no way to answer "what was next last week", to see when an intent was abandoned, or to recover from a bad write by a model.
 
-**Decision.** `~/.coal/` is a local git repository with no remote by default. The store commits after each write, holding the per-manifest lock from #6, with a message naming the tool and operation. `artifacts/` is excluded, since it is already content-addressed and append-only, and `index.db` is excluded because it is derived. `coal log <id>` shows a manifest's history. `reindex` still reads `manifests/` only.
+**Decision.** `~/.coal/` is a local git repository with no remote by default. Writes are committed in batches, never inside a hook: a hook write touches `.history-pending` and runs no git; the daemon tick (after two quiet seconds) or any non-hook CLI command (on opening the store) then commits `manifests/` under the store-wide `.git.lock`, with a message naming the tool and operation for a direct write, or the manifests changed for a batch. `artifacts/` is excluded, since it is already content-addressed and append-only, and `index.db` is excluded because it is derived. `coal log <id>` shows a manifest's history. `reindex` still reads `manifests/` only.
 
 Considered: an append-only event log per manifest with the manifest as a projection. More precise, but a second format for readers and implementers to understand. Not keeping history: the current spec.
 
-**Consequences.** Git (or `isomorphic-git`) becomes a dependency. History comes with ordinary tools: `git log`, `git diff`, `git revert`. Phase 4 sync can start from syncing a git repository. Lost updates are still handled by #6; history only makes them visible.
+**Consequences.** Git becomes a dependency: the `git` on PATH, and without one there is no history. History comes with ordinary tools: `git log`, `git diff`, `git revert`. Phase 4 sync can start from syncing a git repository. Lost updates are still handled by #6; history only makes them visible. Only `manifests/` is committed; session scratch and open copies stay out of the history. Commits are not one per write: writers that finish close together can share a commit, so a commit message names the write that took the lock, not every change in it. Hooks open the store with deferred history: a write touches `.history-pending` and runs no git, the daemon commits once that marker has been quiet for two seconds, and any non-hook command commits what is pending when it opens the store.
 
 ## ADR-015: Use Agent Trace for line-level code provenance
 
@@ -138,7 +140,7 @@ Considered: an append-only event log per manifest with the manifest as a project
 
 ## ADR-016: Capture lifecycle and the resume moment
 
-**Status.** Accepted 2026-11-05. Resolves #1, #2, #3.
+**Status.** Accepted 2026-11-05. Resolves #1, #2, #3. Consequences amended on 2026-11-07 for the order of extraction and the summarizer (ADR-018).
 
 **Context.** The first draft assumed `Stop` meant end of session, that a hook could ask the running model for a summary, and that a `SessionStart` hook could make the assistant speak before the user typed. None of those are true of Claude Code hooks: `Stop` fires after every assistant turn, `SessionEnd` is the per-session event with a 1.5 second budget, a command hook cannot query the session's model, and no assistant turn happens until the user sends one.
 
@@ -148,4 +150,41 @@ Considered: an append-only event log per manifest with the manifest as a project
 - Summaries: the model records its own state through `coal_update_state`, prompted by `SessionStart` context and the tool description. If nothing was recorded, deterministic extraction from the transcript (last user message, last assistant message, files touched) fills `state.summary`. A headless model call over the transcript is an opt-in `config.json` setting, which counts as a call the user configured. `intent.summary` stays the user's first message (ADR-009).
 - The resume moment has two forms. Plain `claude` in a matched directory: the `SessionStart` hook prints a `systemMessage` banner with the next step before the user types, and injects `additionalContext` so the first reply opens by offering to continue. `coal resume`: a launcher that finds the manifest for the directory and starts the harness with a first prompt already supplied, so the first turn is the resume. The demo uses `coal resume`.
 
-**Consequences.** `coal resume` moves a small piece of the Phase 2 entry-point idea into Phase 1. The headline wording changes from "the tool speaks first before you type" to "the next session opens with the next step." How `SessionStart` output is displayed has changed between Claude Code releases; T09 verifies on the current build.
+**Consequences.** `coal resume` moves a small piece of the Phase 2 entry-point idea into Phase 1. The headline wording changes from "the tool speaks first before you type" to "the next session opens with the next step." How `SessionStart` output is displayed has changed between Claude Code releases; T09 verifies on the current build. The configured summarizer does not replace extraction at fold time. Deterministic extraction always runs when the session end is folded, and when `config.summarizer` is set a summarize job is queued under `queue/summarize/` that only the daemon or `coal queue drain` runs later; its result replaces the extraction, and it is skipped when the model recorded state since the session started. A user without a running daemon still gets the extracted summary. The summarizer runs with no shell, a timeout and `COAL_SUMMARIZER=1` set, and hooks exit with nothing done under that variable, so the summarizer's own session is never captured.
+
+## ADR-018: Adopt the Go proof of concept as the Phase 1 implementation
+
+**Status.** Accepted 2026-11-07. Supersedes ADR-005.
+
+**Context.** ADR-005 chose a TypeScript monorepo. Three weeks later it had produced no code: two empty package READMEs and the workspace files. Meanwhile Dave Nicoll built a proof of concept in Go on the `poc/go` branch (`d041c64`) that implements the Phase 1 plan end to end: capture from Claude Code hooks, store, index, daemon, MCP server, web UI, import, history and resume. On 2026-11-07 it was built from a fresh clone on macOS. The demo's capture, find, resume banner and `coal resume` steps passed; only the web UI check did not, because the UI cannot be built there. A live Claude Code 2.1.312 session captured a manifest, recorded its state over MCP, opened the next plain session by offering to continue, and resumed through `coal resume`. The README says the schema is the product; the language of the first implementation is an implementation detail, and ADR-005 already allowed a Go implementation behind the same schema.
+
+**Decision.** `main` adopts the proof of concept as the Phase 1 implementation.
+
+Stack: Go 1.27; `cobra` for the CLI; a `net/http` daemon bound to 127.0.0.1; the official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk` v1.8.0) over stdio; `modernc.org/sqlite` with FTS5, no cgo; the JSON Schema validated with `github.com/santhosh-tekuri/jsonschema`; a web UI in Svelte 5, built with Bun and embedded in the binary; a Makefile for build, test and demo.
+
+Layout: `cmd/coal` is the one binary, with the CLI, the daemon, the MCP server and the hooks as subcommands; `internal/{app,capture,daemon,fold,importer,index,manifest,marker,mcpserver,metrics,paths,queue,store,summarize}`; `spec/` holds the schema, embedded in the binary; `web/` the Svelte UI; `scripts/` the demo, replay, MCP smoke test and sandbox guard; `testdata/claude-code` the recorded hook payloads and transcripts; `docs/poc` the PLAN, STATUS and DEMO of the proof of concept.
+
+`poc/go` is merged into `main` through the `adopt-go` branch. The TypeScript, pnpm, Fastify, Zod and Vite+React sections of CLAUDE.md and the docs are retired, and the empty `packages/coal` and `packages/diamond` READMEs, the root `package.json` and `pnpm-workspace.yaml` are removed. ADR-005's two-package rule is replaced by one binary and internal packages; a package is split out only when a second implementer needs one piece alone.
+
+**Consequences.** CLAUDE.md, CONTRIBUTING, README and docs/02, 03 and 05 are updated in the same change. Tests must pass on macOS and Linux; on 2026-11-07 three Go test packages failed on macOS, and each is tracked as an issue: the MIME table has no Markdown entry on macOS, so a `.md` artifact is served as plain text (#22); symlinked temp directories break the import and store tests, because the project root is resolved and the compared paths are not (#23); a store test expects `/proc` and the sensitive-path check misses a symlinked home and macOS Library paths (#24). Other bugs found in the same run are tracked the same way: a chat-only session overwrites `state.summary` (#20); `session_attached` and `resume_acted` only count file writes (#21); the `.coal` marker schema URL is not published (#27); `intent.summary` is cut at 200 characters mid-sentence (#28). None of them is fixed in this change; each is one issue and one later PR to `main`. The web UI depends on `@davenicoll/web-framework`, a private sibling checkout that is not published anywhere, so `make web`, `make e2e` and the demo's UI check only run on Dave's machine; the framework must be vendored or published before a release (#26). The demo scripts need GNU bash 4 or later and GNU coreutils until they are rewritten, and the Makefile expects Go under `~/.local/go`, so `GO=` must point at the installed Go 1.27 elsewhere (#25).
+
+## ADR-019: Artifact identity is (manifest, uri) with versions[]
+
+**Status.** Accepted 2026-11-07. Resolves #5, #6 and #7. Constrains ADR-017.
+
+**Context.** The first draft of the schema identified every artifact by content hash, so a file edited across sessions appeared as a new artifact each time (#5), two writers could overwrite each other's manifest unnoticed (#6), and nothing in the schema kept a secret out of an artifact body or out of `sessionRef` (#7). The proof of concept answered all three with small schema changes, and docs/04 design rule 3 already states the identity rule. Every change is an optional field or a tighter constraint on an existing one, so it fits design rule 5, additive evolution.
+
+**Decision.** The Intent Manifest schema stays at version 0.1 and its published `$id`. The following are accepted into 0.1:
+
+- top-level `rev`, an integer starting at 1 and incremented on every write, so a writer can pass the `rev` it read and get a conflict if it moved (#6);
+- `artifacts[].versions[]` of `$defs.artifactVersion` (`hash`, `size`, `createdAt`, `producer`), newest last; the top-level `hash`, `size`, `createdAt` and `producer` mirror the latest version so simple readers still work (#5);
+- `artifacts[].skipped`, a string saying why a body was not copied (#7);
+- `artifacts[].ext`, for extension keys such as `dev.agent-trace` (ADR-015);
+- `sessionRef` must not look like a token, enforced with a `not: {pattern}` for common token shapes (#7);
+- `intent.source` defaults to `"model"`.
+
+An artifact with a `uri` is identified by (manifest, uri) and keeps its history in `versions[]`. An artifact without a `uri` is identified by content hash. 0.1 stays Draft and freezes at the Phase 1 retro (T14).
+
+ADR-017 (Places, PR 19, Proposed) must build its "artifacts kept by reference" on `versions[]`: a version kept by reference records `uri`, `size` and a new `modifiedAt`, sets `skipped: "reference"`, and has no `hash`. `hash` therefore becomes optional on a version only when `skipped` is set. `intent.icon` is a hash, so the icon is always a copied artifact. ADR-017 must reference #5 and state that the `versions[]` model wins.
+
+**Consequences.** Readers written against the first draft keep working: the top-level artifact fields are unchanged and every new field is optional. Writers that ignore `rev` still write, but without the conflict check. `skipped` gains the value `"reference"` beside the secret reasons and `"purged"`. The schema in `spec/` and docs/04 carry these fields on `poc/go` and come to `main` with ADR-018; the schema served at the `$id` must be redeployed with them. Because 0.1 is still Draft, no version bump is needed; after the retro, any further change to the schema needs a new version.

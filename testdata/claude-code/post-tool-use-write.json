@@ -1,0 +1,18 @@
+{
+  "session_id": "7c1f3e2a-5b4d-4e8f-9a01-2b3c4d5e6f70",
+  "transcript_path": "/PROJECT/.claude-projects/-PROJECT-budget/7c1f3e2a-5b4d-4e8f-9a01-2b3c4d5e6f70.jsonl",
+  "cwd": "/PROJECT/budget",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/PROJECT/budget/budget.html",
+    "content": "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><title>Household budget</title></head>\n<body>\n<h1>Household budget</h1>\n<table id=\"rows\"><tr><th>Item</th><th>Amount</th></tr></table>\n<p>Total: <span id=\"total\">0</span></p>\n</body>\n</html>\n"
+  },
+  "tool_response": {
+    "filePath": "/PROJECT/budget/budget.html",
+    "type": "create"
+  },
+  "tool_use_id": "toolu_01Write0000000000000000",
+  "duration_ms": 9
+}

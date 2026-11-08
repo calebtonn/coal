@@ -24,7 +24,7 @@ It runs on your machine. The record is a folder of JSON files you can read with 
 
 ## Status
 
-Pre-alpha, and being built in the open. `main` holds the spec, the decisions behind it, and the task list (`docs/05-MVP-TASKS.md`). A proof of concept on the [`poc/go`](https://github.com/calebtonn/coal/blob/poc/go/docs/poc/STATUS.md) branch, written in Go, runs the demo from a recorded Claude Code session: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and the web UI. It has not been run against a live session, it has no `coal resume` yet, and it does not build from a fresh clone. It is not merged. If you want to follow along or help, read the spec, look through the proof of concept, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
+Pre-alpha, and being built in the open. There is nothing to install yet. `main` holds the spec, the decisions behind it, the task list (`docs/05-MVP-TASKS.md`) and the Phase 1 implementation: the Go proof of concept from the `poc/go` branch, adopted as the implementation in ADR-018 and merged. It runs the demo from a recorded Claude Code session and was run once against a live Claude Code session on macOS on 2026-11-07: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and `coal resume`. The Go binary builds with Go 1.27. The web UI depends on a package that is not published yet, so `make web` works only with the sibling checkout. [`docs/poc/STATUS.md`](docs/poc/STATUS.md) has the details. If you want to follow along or help, read the spec, look through the code, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
 
 ## Layout
 
@@ -32,7 +32,10 @@ Pre-alpha, and being built in the open. `main` holds the spec, the decisions beh
 coal/
   CLAUDE.md                     Instructions for Claude Code
   CONTRIBUTING.md               How to help now
+  Makefile                      Build, test and demo targets
+  go.mod                        The one Go module
   assets/                       Icon: icon.png plus 16 to 512 px sizes
+  cmd/coal/                     The one binary: CLI, daemon, MCP server, hooks
   docs/
     01-THESIS.md                Why this exists, one page
     02-SPEC.md                  MVP functional spec
@@ -40,15 +43,19 @@ coal/
     04-INTENT-MANIFEST.md       The open standard (v0.1)
     05-MVP-TASKS.md             Ordered build tasks with acceptance criteria
     06-DECISIONS.md             Architecture decision records
+    poc/                        PLAN, STATUS and DEMO for the implementation
+  internal/                     The library: app, capture, daemon, fold, importer, index,
+                                manifest, marker, mcpserver, metrics, paths, queue, store, summarize
   spec/
-    intent-manifest.schema.json JSON Schema for the manifest
+    intent-manifest.schema.json JSON Schema for the manifest, embedded in the binary
     examples/                   Example manifests
-  packages/
-    diamond/                    Types, validation, storage, index (the part inside the coal)
-    coal/                       The `coal` CLI: serve, mcp, adapter, find, add, open; web UI under web/
+  web/                          Web UI: Svelte 5, built with Bun, embedded in the binary
+  scripts/                      Demo, session replay, MCP smoke test, sandbox guard
+  site/                         coalmine.io: the one-page site and the published schema
+  testdata/claude-code/         Recorded hook payloads and transcripts
 ```
 
-Two packages. `diamond` is the library. `coal` is what you install. I will split them further only if someone else needs one piece on its own.
+One binary. `coal` is what you install. The library lives under `internal/`. I will split a package out only if someone else needs one piece on its own.
 
 ## What the MVP covers
 
@@ -60,8 +67,8 @@ The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds
 
 | Phase | Name | Status | What it has to show |
 |---|---|---|---|
-| 1 | Record | MVP, in progress | A record captured in one tool can be read back and resumed in another |
-| 2 | Reach | Not started | Capture works from every tool, including ones with no hooks |
+| 1 | Record | MVP, in progress | A record captured in one tool can be read back and resumed in another, with sessions attached to the right intent |
+| 2 | Reach | Not started | Capture works from every coding agent with hooks and from chat apps, which have none |
 | 3 | Attention | Not started | The record plus simple rules is enough to surface the right thing at the right time |
 | 4 | Portability | Not started | Someone else's software writes manifests that work here |
 
@@ -72,15 +79,16 @@ The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds
 - Resume: the next step on screen before you type; `coal resume` opens the session from it
 - History: `~/.coal/` is a git repo, committed by the daemon
 - MCP server, `coal` CLI, local web UI
-- Two packages: `diamond` and `coal`
+- One binary, `coal`, with the library under `internal/`
 
 Done when: the week six retro. If I have not reached for it unprompted at least five times in a week, I stop.
 
 ### Phase 2: Reach
 
-- `coal import`: build manifests from the session logs already on disk
-- Browser capture from claude.ai and chatgpt.com
-- Cursor and other MCP writers
+- Cursor and Codex adapters on the Phase 1 capture contract
+- `coal import` (ADR-012): build manifests from session logs already on disk and from claude.ai and ChatGPT exports (a first version, `coal import claude-code`, already exists)
+- Browser capture from claude.ai and chatgpt.com, if import is not enough
+- Code provenance by reference to Agent Trace (ADR-015)
 - Semantic search with a local embedding model
 - Raycast extension as the entry point
 

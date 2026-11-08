@@ -1,5 +1,23 @@
 # MVP Build Tasks
 
+**Status 2026-11-07.** The Go proof of concept on `poc/go` (ADR-018) is adopted as the Phase 1 implementation. It covers T01 to T11 and the T13 script in substance, mapped to the POC milestones and packages in `docs/poc/PLAN.md` and `docs/poc/STATUS.md` as follows. The tasks below keep their numbers and their original text.
+
+- T01: M0 scaffold (`go.mod`, `cmd/coal`, `Makefile`). The pnpm workspace scaffold as written is retired.
+- T02: M1 (`internal/manifest`, `spec/embed.go`, `coal validate`). The schema is hand-written JSON Schema validated by santhosh-tekuri/jsonschema; the Zod schema and generator as written are retired.
+- T03: M2 (`internal/store`: atomic writes, `rev` compare-and-swap, artifact versions, trash).
+- T04: M3 (`internal/index`: modernc.org/sqlite with FTS5, `coal reindex`).
+- T05: M3 and M9 (`cmd/coal`: `find`, `show`, `open`, `add`, `rm`, `rename`, `log`, `purge`, `stats`).
+- T06: M5 (`internal/mcpserver`, `coal mcp` on the official Go MCP SDK).
+- T07: M4 (`internal/daemon`, `coal serve` on `net/http`, embedded UI).
+- T08: M6a and M6b (`internal/capture`, `internal/queue`, `internal/marker`, `internal/fold`; `coal hook`, `coal adapter install claude-code`).
+- T09: M6 and M11 (`coal hook session-start` banner and `additionalContext`; `coal resume`).
+- T10: M7 (`web/`, Svelte 5 built with Bun and embedded in the binary). Its framework dependency is unpublished, so the UI does not build from a fresh clone today; see the known bugs.
+- T11: M11 history and M9 (deferred history from hooks, batched commits under `.git.lock`, `coal log`) and the daemon log rotation from M4.
+- T12 install path: the npm tarball as written is retired with the stack (ADR-018); the install path for the Go binary is not decided. `coal init` and the README quickstart parts stand. T12b schema publishing stays as written.
+- T13: M8 (`scripts/demo.sh`, `docs/poc/DEMO.md`). No recording yet.
+
+T14 stands and is the gate. These known bugs must be fixed before T14, each tracked as a GitHub issue: chat-only sessions overwrite `state.summary`; `session_attached` and `resume_acted` undercount; macOS test failures; demo scripts need GNU tools; web UI framework unpublished.
+
 Ordered. Each task is sized for one Claude Code session. Do not start a task until the one before it passes its acceptance criteria. Commit after each task.
 
 Estimated total: six weeks of nights and weekends, or two weeks full time.
@@ -107,7 +125,7 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 
 ### T14. Decision gate
 - Use COAL for real for one week. Every day, log: did it capture what I built, did I find things by intent, did it get in the way
-- Write `docs/RETRO.md` with the answers and a recommendation: continue to Phase 2, pivot, or stop
+- Write `docs/RETRO.md` with the answers and a recommendation: continue to Phase 2, pivot, or stop. The retro reads `coal stats --days 7` alongside the daily notes. Today `coal stats` counts `coal_find` calls by client tool, resume lines shown, resume lines acted on, sessions attached, manifests created, renames, purges and `coal resume` launches, and prints two ratios: acted on over shown, and attached over attached plus created. The acted and attached counters are being corrected: today they only count a session that writes a file into the matched manifest. A suggested bar: resume is acted on more often than it is ignored, and there is fewer than one manual merge per ten sessions
 - **Accept:** retro written; decision made
 
 ## Deferred (explicitly not now)

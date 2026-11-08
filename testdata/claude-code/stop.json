@@ -1,0 +1,11 @@
+{
+  "session_id": "7c1f3e2a-5b4d-4e8f-9a01-2b3c4d5e6f70",
+  "transcript_path": "/PROJECT/.claude-projects/-PROJECT-budget/7c1f3e2a-5b4d-4e8f-9a01-2b3c4d5e6f70.jsonl",
+  "cwd": "/PROJECT/budget",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "I built budget.html, a single-page household budget tracker with a table of items, a running total and an Add row button.\n\nOpen it in a browser to try it. Rows are kept in localStorage.\n\nNext step: add CSV export",
+  "background_tasks": [],
+  "session_crons": []
+}

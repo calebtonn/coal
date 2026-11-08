@@ -29,6 +29,11 @@
     "id": {
       "$ref": "#/$defs/uuid"
     },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Write revision. Incremented on every write; pass it back for compare-and-swap."
+    },
     "intent": {
       "type": "object",
       "required": [
@@ -56,7 +61,8 @@
             "user",
             "model"
           ],
-          "description": "Who wrote summary. Readers prefer user."
+          "description": "Who wrote summary. Readers prefer user.",
+          "default": "model"
         }
       }
     },
@@ -188,7 +194,10 @@
         },
         "sessionRef": {
           "type": "string",
-          "description": "Opaque locator. Never an auth token."
+          "description": "Opaque locator. Never an auth token.",
+          "not": {
+            "pattern": "^(Bearer |sk-|xox[abps]-|ghp_|github_pat_|AKIA)"
+          }
         },
         "capturedBy": {
           "type": "string"
@@ -229,7 +238,8 @@
         },
         "uri": {
           "type": "string",
-          "format": "uri"
+          "format": "uri",
+          "description": "Original location. When present, (manifest, uri) is the artifact's identity and versions[] holds its history."
         },
         "size": {
           "type": "integer",
@@ -240,6 +250,52 @@
         },
         "producer": {
           "$ref": "#/$defs/provenance"
+        },
+        "versions": {
+          "type": "array",
+          "description": "History of this artifact, newest last. The top-level hash, size, createdAt and producer mirror the last entry.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/artifactVersion"
+          }
+        },
+        "skipped": {
+          "type": "string",
+          "description": "Why the body was not copied, for example a possible secret."
+        },
+        "ext": {
+          "type": "object",
+          "description": "Namespaced extensions keyed by reverse-DNS identifier, for example dev.agent-trace (ADR-015).",
+          "additionalProperties": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "artifactVersion": {
+      "type": "object",
+      "required": [
+        "hash",
+        "createdAt",
+        "producer"
+      ],
+      "properties": {
+        "hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "producer": {
+          "$ref": "#/$defs/provenance"
+        },
+        "skipped": {
+          "type": "string",
+          "description": "Why this version's body was not copied."
         }
       }
     },

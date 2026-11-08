@@ -1,0 +1,254 @@
+package store
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// register writes body to dir/name and registers it, returning skipped.
+func register(t *testing.T, s *Store, id, dir, name, body string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	must(t, os.MkdirAll(filepath.Dir(p), 0o700))
+	must(t, os.WriteFile(p, []byte(body), 0o600))
+	a, err := s.RegisterArtifact(id, ArtifactInput{Path: p}, Op{})
+	must(t, err)
+	return a.Skipped
+}
+
+func TestDeniedNames(t *testing.T) {
+	s, m := setup(t)
+	dir := t.TempDir()
+	for _, name := range []string{".netrc", "_netrc", ".npmrc", ".pypirc", ".envrc", "prod.env", ".git-credentials", ".credentials.json", "aws_credentials",
+		"id_ecdsa", "id_dsa.pub", "vault.kdbx", ".pgpass", "release.jks", "app.keystore"} {
+		if got := register(t, s, m.ID, dir, name, "harmless text"); !strings.Contains(got, "file name matches") {
+			t.Errorf("%s: skipped %q", name, got)
+		}
+	}
+	if got := register(t, s, m.ID, dir, "environment.md", "harmless"); got != "" {
+		t.Errorf("environment.md skipped: %q", got)
+	}
+}
+
+func TestTokenRules(t *testing.T) {
+	s, m := setup(t)
+	dir := t.TempDir()
+	r := func(c string, n int) string { return strings.Repeat(c, n) }
+	for rule, body := range map[string]string{
+		"GitHub token":   "token: gho_" + r("a", 24) + "\nand ghs_" + r("B", 20),
+		"npm token":      "//registry.npmjs.org/:_authToken=npm_" + r("x", 36),
+		"PyPI token":     "password = pypi-" + r("A", 60),
+		"GitLab token":   "glpat-" + r("z", 20),
+		"Slack token":    "SLACK_APP=xapp-1-A0123456789-abcdef",
+		"JWT":            "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0." + r("s", 43),
+		"netrc password": "machine example.com login me password hunter2-secret\n",
+	} {
+		if got := register(t, s, m.ID, dir, rule+".txt", "notes\n"+body+"\n"); got != "possible secret: "+rule {
+			t.Errorf("%s: skipped %q", rule, got)
+		}
+	}
+	if got := register(t, s, m.ID, dir, "login.txt", "default login me password s3cr3tvalue\n"); got != "possible secret: netrc password" {
+		t.Errorf("login and password line: %q", got)
+	}
+	for _, prose := range []string{"Reset your password here.\npassword reset flow\n", "ghs_short", "eyJ alone"} {
+		if got := register(t, s, m.ID, dir, "prose.md", prose); got != "" {
+			t.Errorf("prose %q skipped: %q", prose, got)
+		}
+	}
+	// The whole body is scanned, not just the start.
+	late := strings.Repeat("x", 3<<20) + "\nAKIAABCDEFGHIJKLMNOP\n"
+	if got := register(t, s, m.ID, dir, "late.txt", late); got != "possible secret: AWS access key" {
+		t.Errorf("token after 3 MiB: %q", got)
+	}
+}
+
+func TestReviewTwoFalsePositives(t *testing.T) {
+	s, m := setup(t)
+	dir := t.TempDir()
+	// F1: a page with a Firebase config is an ordinary page, and is stored.
+	page := `<script>const firebaseConfig = { apiKey: "AIza` + strings.Repeat("9", 35) + `", authDomain: "x.firebaseapp.com" };</script>`
+	if got := register(t, s, m.ID, dir, "index.html", page); got != "" {
+		t.Errorf("Firebase page skipped: %q", got)
+	}
+	// F2: an Ansible inventory named hosts.yml is stored.
+	if got := register(t, s, m.ID, dir, "inventory/hosts.yml", "all:\n  hosts:\n    web1:\n"); got != "" {
+		t.Errorf("hosts.yml skipped: %q", got)
+	}
+	// F2: JWTs in tests and fixtures are samples; elsewhere they are secrets.
+	jwt := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0." + strings.Repeat("s", 43)
+	for _, name := range []string{"auth_test.go", "auth.test.ts", "login.spec.js", "testdata/token.txt",
+		"fixtures/a.json", "src/__fixtures__/b.json", "src/__tests__/c.js"} {
+		if got := register(t, s, m.ID, dir, name, "token = "+jwt); got != "" {
+			t.Errorf("%s: JWT sample skipped: %q", name, got)
+		}
+	}
+	for _, name := range []string{"auth.go", "testing/notes.txt", "contest.md"} {
+		if got := register(t, s, m.ID, dir, name, "token = "+jwt); got != "possible secret: JWT" {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+	// Other token rules still apply in tests.
+	if got := register(t, s, m.ID, dir, "x_test.go", "AKIAABCDEFGHIJKLMNOP"); got != "possible secret: AWS access key" {
+		t.Errorf("AWS key in a test file: %q", got)
+	}
+}
+
+func TestReviewTwoLows(t *testing.T) {
+	s, m := setup(t)
+	dir := t.TempDir()
+	key := "A1b2C3d4E5f6G7h8I9j0K1l2M3n4"
+	for name, body := range map[string]string{
+		"spinkit.css":  ".sk-circle-bounce-delay-animation { animation: sk-circle-bounce-delay 1.2s }",
+		"tasks.md":     "see task-sk-20251104abcdefghijklmnop and task_sk-" + key,
+		"css-key.css":  ".sk-" + key + " { }",
+		"prose.md":     "A password required screen.\npassword required\nThe password is set by the user.",
+		"short-jwt.md": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.shortsignature123",
+		"lowercase.md": "sk-" + strings.Repeat("abcdefgh", 4),
+	} {
+		if got := register(t, s, m.ID, dir, name, body); got != "" {
+			t.Errorf("%s: skipped %q", name, got)
+		}
+	}
+	for name, body := range map[string]string{
+		"proj.env.md": "OPENAI_API_KEY=sk-proj-" + strings.Repeat("a", 24),
+		"ant.md":      `key: "sk-ant-` + strings.Repeat("b", 30) + `"`,
+		"legacy.md":   "key sk-" + key,
+		"start.md":    "sk-" + key,
+	} {
+		if got := register(t, s, m.ID, dir, name, body); got != "possible secret: sk- key" {
+			t.Errorf("%s: skipped %q", name, got)
+		}
+	}
+}
+
+func TestSaltRepairAndFallback(t *testing.T) {
+	s, m := setup(t)
+	cfg := filepath.Join(s.Dir(), "config.json")
+	in := ArtifactInput{Content: []byte("AKIAABCDEFGHIJKLMNOP"), Title: "a.txt"}
+	must(t, os.WriteFile(cfg, []byte(`{"version":"0.1","skippedHashSalt":"not hex"}`), 0o600))
+	_, err := s.RegisterArtifact(m.ID, in, Op{})
+	must(t, err)
+	log, _ := os.ReadFile(filepath.Join(s.Dir(), "logs", "coal.log"))
+	var c map[string]string
+	b, _ := os.ReadFile(cfg)
+	must(t, json.Unmarshal(b, &c))
+	if strings.Count(string(log), "was malformed; replaced it with a new salt") != 1 ||
+		strings.Contains(string(log), c[saltKey]) || strings.Contains(string(log), "not hex") {
+		t.Errorf("log:\n%s", log)
+	}
+
+	// A config.json that is not an object is left alone; the salt goes to .salt.
+	s2, m2 := setup(t)
+	cfg2 := filepath.Join(s2.Dir(), "config.json")
+	must(t, os.WriteFile(cfg2, []byte("[1, 2]"), 0o600))
+	a1, err := s2.RegisterArtifact(m2.ID, in, Op{})
+	must(t, err)
+	if b, _ := os.ReadFile(cfg2); string(b) != "[1, 2]" {
+		t.Errorf("config.json rewritten: %s", b)
+	}
+	st, err := os.Stat(filepath.Join(s2.Dir(), ".salt"))
+	if err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf(".salt: %v %v", st, err)
+	}
+	s3, err := Open(s2.Dir(), WithHistory(false))
+	must(t, err)
+	a2, err := s3.RegisterArtifact(m2.ID, in, Op{})
+	must(t, err)
+	if a1.Hash != a2.Hash {
+		t.Errorf(".salt not reused: %s vs %s", a1.Hash, a2.Hash)
+	}
+}
+
+func TestTooLarge(t *testing.T) {
+	s, m := setup(t)
+	big := strings.Repeat("a", MaxBody+1)
+	if got := register(t, s, m.ID, t.TempDir(), "big.txt", big); got != "too large" {
+		t.Errorf("file over the cap: %q", got)
+	}
+	a, err := s.RegisterArtifact(m.ID, ArtifactInput{Content: []byte(big), Title: "big2.txt"}, Op{})
+	must(t, err)
+	if a.Skipped != "too large" || a.Size != nil {
+		t.Errorf("content over the cap: %+v", a)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(s.Dir(), "artifacts")); len(entries) != 0 {
+		t.Errorf("%d bodies stored", len(entries))
+	}
+}
+
+func TestSymlinksAndSensitiveDirs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	s, m := setup(t)
+	dir := t.TempDir()
+
+	// An innocent link name pointing at .env is caught by the target's name.
+	must(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("X=1"), 0o600))
+	must(t, os.Symlink(filepath.Join(dir, ".env"), filepath.Join(dir, "notes.txt")))
+	a, err := s.RegisterArtifact(m.ID, ArtifactInput{Path: filepath.Join(dir, "notes.txt")}, Op{})
+	must(t, err)
+	if !strings.Contains(a.Skipped, "matches .env") || !strings.HasSuffix(a.URI, "/notes.txt") {
+		t.Errorf("link to .env: %+v", a)
+	}
+
+	// Anything under ~/.ssh, directly or through a link, is never read.
+	must(t, os.MkdirAll(filepath.Join(home, ".ssh"), 0o700))
+	must(t, os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte("Host x"), 0o600))
+	must(t, os.Symlink(filepath.Join(home, ".ssh", "config"), filepath.Join(dir, "readme.md")))
+	for _, p := range []string{filepath.Join(home, ".ssh", "config"), filepath.Join(dir, "readme.md")} {
+		a, err := s.RegisterArtifact(m.ID, ArtifactInput{Path: p}, Op{})
+		must(t, err)
+		if a.Skipped != "sensitive location: ~/.ssh" || a.Size != nil {
+			t.Errorf("%s: %+v", p, a)
+		}
+	}
+	for _, d := range []string{".config/gh", ".mozilla", ".config/google-chrome", ".config/chromium",
+		".config/BraveSoftware", ".local/share/keyrings", ".claude"} {
+		if got := register(t, s, m.ID, filepath.Join(home, d), "profile/data.txt", "x"); got != "sensitive location: ~/"+d {
+			t.Errorf("~/%s: %q", d, got)
+		}
+	}
+	a, err = s.RegisterArtifact(m.ID, ArtifactInput{Path: "/proc/self/status"}, Op{})
+	must(t, err)
+	if a.Skipped != "sensitive location: /proc" {
+		t.Errorf("/proc: %+v", a)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(s.Dir(), "artifacts")); len(entries) != 0 {
+		t.Errorf("%d bodies stored", len(entries))
+	}
+}
+
+func TestBlindHashSalt(t *testing.T) {
+	s, m := setup(t)
+	in := ArtifactInput{Content: []byte("AKIAABCDEFGHIJKLMNOP"), Title: "a.txt"}
+	a1, err := s.RegisterArtifact(m.ID, in, Op{})
+	must(t, err)
+	cfg, _ := os.ReadFile(filepath.Join(s.Dir(), "config.json"))
+	var c map[string]any
+	must(t, json.Unmarshal(cfg, &c))
+	salt, _ := c[saltKey].(string)
+	if len(salt) != 64 || c["version"] != "0.1" {
+		t.Fatalf("config.json: %s", cfg)
+	}
+	// A second store on the same directory reuses the salt, so the same
+	// skipped body gets the same hash and stays one artifact.
+	s2, err := Open(s.Dir(), WithHistory(false))
+	must(t, err)
+	a2, err := s2.RegisterArtifact(m.ID, in, Op{})
+	must(t, err)
+	got, _ := s.Get(m.ID)
+	if a1.Hash != a2.Hash || len(got.Artifacts) != 1 {
+		t.Errorf("hashes %s %s, %d artifacts", a1.Hash, a2.Hash, len(got.Artifacts))
+	}
+	for _, name := range []string{"coal.log"} {
+		if b, _ := os.ReadFile(filepath.Join(s.Dir(), "logs", name)); bytes.Contains(b, []byte(salt)) {
+			t.Errorf("salt in %s", name)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(s.Dir(), "manifests", m.ID+".json")); bytes.Contains(b, []byte(salt)) {
+		t.Error("salt in the manifest")
+	}
+}
