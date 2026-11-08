@@ -94,7 +94,7 @@ One binary. `--home <dir>` on any command overrides `COAL_HOME` and `~/.coal`. I
 - `coal add --intent "..." [--goal "..."] [--status s] [--tag t]... [--artifact path]...` records a manifest in your own words
 - `coal find [query...] [--status s] [--limit n] [--json]` searches; with no query, lists manifests newest first. Prints a table: id, summary, status, last activity, artifact count, with a snippet line under each row. `--json` prints an array of rows in the API shape
 - `coal show <id>` prints the manifest as JSON
-- `coal open <id> [--artifact n]` opens a fresh copy of the artifact (made under `tmp/`) with the OS default handler; `n` counts from 1 in manifest order and defaults to 1
+- `coal open <id> [--artifact n]` opens a fresh copy of the artifact (made under `tmp/`) with the OS default handler; `n` counts from 1 in manifest order and defaults to 1. ADR-017 (Proposed) gives the no-flag form place behaviour; until it is accepted, `coal open <id>` opens the first artifact.
 - `coal rename <id> "<summary>"` sets `intent.summary` in your own words and `intent.source` to `user`
 - `coal rm <id>` moves a manifest to `trash/`; nothing is deleted
 - `coal purge <hash> [--yes]` deletes an artifact body that holds a secret and marks every version that used it `skipped: "purged"`; the one exception to never deleting
