@@ -84,7 +84,7 @@ Capture comes from Claude Code only. Cursor, Codex CLI and Gemini CLI have lifec
 
 ## Phases
 
-The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds up. Each one starts only after the retro on the one before it. Phase 1 has a date. The others do not.
+The MVP is Phase 1. Phases 2 through 5 describe where this goes if Phase 1 holds up. Each one starts only after the retro on the one before it. Phase 5 is a proposal (ADR-017), and a small part of it may land earlier. Phase 1 has a date. The others do not.
 
 | Phase | Name | Status | What it has to show |
 |---|---|---|---|
@@ -92,6 +92,7 @@ The MVP is Phase 1. Phases 2 through 4 describe where this goes if Phase 1 holds
 | 2 | Reach | Not started | Capture works from every coding agent with hooks and from chat apps, which have none |
 | 3 | Attention | Not started | The record plus simple rules is enough to surface the right thing at the right time |
 | 4 | Portability | Not started | Someone else's software writes manifests that work here |
+| 5 | Places | Proposed | An area of work opens from one place, with its tools and next step |
 
 ### Phase 1: Record (the MVP, six weeks)
 
@@ -134,6 +135,18 @@ Done when: surfaced items get opened more often than dismissed, and nobody has t
 - Org install and fleet config, open source like everything else
 
 Done when: a manifest written by software this repo did not produce validates and resumes here.
+
+### Phase 5: Places (proposed, ADR-017)
+
+- A name and an icon for each area of work, such as the home budget or a video
+- Areas that stay open, with projects inside them through `partOf`
+- A kit of entry points: chats, MCP servers, and links to docs, data, planners, notes, and files that open in apps outside AI, such as a Final Cut Pro library
+- Large files, such as video exports, kept by reference instead of copied (the schema change lands by spec v1.0)
+- Opt-in folder watching, so work in apps without hooks still updates the record
+- `coal open` and launchers that bring up the kit, the active projects and the next step together
+- MCP servers attached on open where the tool allows it, and listed as links where it does not
+
+Done when: at the retro after a month of use, most work on the home budget and one other area started from their place, and nothing in their kits had to be set up again by hand.
 
 ## Principles
 
