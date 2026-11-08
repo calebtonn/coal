@@ -1,0 +1,9 @@
+# Lines that may use a word the prose checks flag. One entry per line:
+# <repo path>	<exact substring of the line>
+# A path alone allows the whole file. An entry that matches nothing fails.
+docs/01-THESIS.md
+docs/02-SPEC.md	Daemon idle memory
+docs/06-DECISIONS.md	built-in memory store
+docs/poc/PLAN.md	in-memory transport
+docs/05-MVP-TASKS.md	The pnpm workspace scaffold as written was retired
+docs/05-MVP-TASKS.md	the Zod schema and generator as written were retired

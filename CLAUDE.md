@@ -28,7 +28,7 @@ Layout:
 
 ```
 cmd/coal/                the one binary: CLI, daemon, MCP server, hooks
-internal/                app, capture, daemon, fold, importer, index, manifest, marker,
+internal/                app, capture, daemon, drift, fold, importer, index, manifest, marker,
                          mcpserver, metrics, paths, queue, store, summarize
 spec/                    the schema, embedded in the binary
 web/                     Svelte UI
@@ -78,13 +78,14 @@ make test
 make vet
 make demo                   # runs make web build, then the five definition-of-done steps in a fresh .sandbox/demo-*/
 SKIP_BUILD=1 make demo      # the same without rebuilding; use it after make build when the UI cannot be built
+SKIP_BUILD=1 DEMO_SKIP_UI=1 make demo   # the same, with the built-UI check (step 5b) recorded as SKIP instead of FAIL; what CI runs
 make web                    # builds the UI; needs Bun and the sibling web-framework checkout
 make e2e                    # builds the UI and the binary, then drives the UI in headless Chromium
 ```
 
 The scripts need GNU bash 4+ and GNU coreutils. On macOS, `brew install bash coreutils` and put them first on `PATH`.
 
-`make web`, `make e2e` and a plain `make demo` need `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo; the package is not published (#26). Without it the binary still builds, `/` serves a page saying the UI is not built, and the demo runs as `SKIP_BUILD=1 make demo` after `make build`, where steps 1 to 4 pass and step 5 fails on the UI check.
+`make web`, `make e2e` and a plain `make demo` need `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo; the package is not published (#26). Without it the binary still builds, `/` serves a page saying the UI is not built, and the demo runs as `SKIP_BUILD=1 make demo` after `make build`, where steps 1 to 5a pass and step 5b, the built-UI check, fails; with `DEMO_SKIP_UI=1` as well, 5b is recorded as SKIP and the demo exits 0.
 
 Run the binary as `.sandbox/bin/coal` with `COAL_HOME` set, or pass `--home`:
 
@@ -94,6 +95,18 @@ export COAL_HOME=$PWD/.sandbox/coal
 .sandbox/bin/coal find budget
 .sandbox/bin/coal --home /path/to/data serve
 ```
+
+## Checks
+
+`make GO=/path/to/go check` runs after `vet` and `build`: gofmt over `cmd`, `internal` and `spec`, `go vet`, the drift tests in `internal/drift`, and the site build into a temporary directory with a byte comparison of the published schema against `spec/intent-manifest.schema.json`. Run it before opening a pull request. CI (`.github/workflows/ci.yml`) runs vet, build, the tests and the demo without the UI step on Ubuntu and macOS, and `make check` on Ubuntu.
+
+Pull request rules: one PR per issue; the docs and the site that describe the behavior change in the same PR, or none describe it; `make check` is green. The template in `.github/pull_request_template.md` asks for each one.
+
+When documents disagree, accepted ADRs in `docs/06-DECISIONS.md` win, then `spec/intent-manifest.schema.json`, then `docs/02-SPEC.md` and `docs/04-INTENT-MANIFEST.md`, then `site/index.html`, then `README.md` and `docs/05-MVP-TASKS.md`, then the code; `docs/07-DRIFT.md` has the full order, how to read a failing check, and the procedure for changing the vision on purpose.
+
+The `/drift-review` skill (`.claude/skills/drift-review/SKILL.md`) is the semantic pass that `make check` cannot do. It reads the site, the docs and the code, writes a report to `docs/drift/` that classifies every disagreement as code drifted, docs drifted or vision changed, and ends by printing the issues to open. With an ADR number as its argument it produces the snap list for that ADR. It fixes nothing and opens nothing.
+
+`internal/drift/known.txt` lists checks that fail today because of an open issue, one tab-separated line each: the check id, the issue as `#N`, a note. A listed check that fails is logged, not failed; a listed check that passes fails the test with a message to remove the line, and the PR that closes the issue removes it. `internal/drift/allow.txt` lists where a forbidden word is allowed, one tab-separated line each: a path relative to the repo root and the exact substring that is allowed (no substring allows the whole file). An entry whose substring matches nothing fails the test, so an allowance goes away with the text it covered.
 
 ## Definition of done for the MVP
 

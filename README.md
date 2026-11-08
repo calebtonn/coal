@@ -32,8 +32,10 @@ You need Go 1.27 and git. The demo scripts also need GNU bash 4+, GNU coreutils,
 
 ```
 make GO=/path/to/go build               # builds .sandbox/bin/coal
-make GO=/path/to/go test                # three packages fail on macOS today (#22, #23, #24)
+make GO=/path/to/go test                # four packages fail on macOS today (#22, #23, #24, #31)
 SKIP_BUILD=1 make GO=/path/to/go demo   # the five definition-of-done steps in a fresh .sandbox/demo-*/
+SKIP_BUILD=1 DEMO_SKIP_UI=1 make GO=/path/to/go demo   # the same, with the built-UI check (5b) recorded as SKIP (#26)
+make GO=/path/to/go check               # gofmt, vet, the drift tests and the site build; run it before a PR
 ```
 
 Run the binary with `COAL_HOME` set, or pass `--home`:
@@ -45,12 +47,14 @@ export COAL_HOME=$PWD/.sandbox/coal
 .sandbox/bin/coal find budget
 ```
 
-The web UI does not build from a fresh clone. `make web`, `make e2e` and the demo's step 5 need Bun and `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo, and that package is not published (#26). Without it, run the demo as `SKIP_BUILD=1 make demo` after `make build`: steps 1 to 4 pass, step 5 fails on the UI check, and `http://127.0.0.1:4242` serves a page saying the UI is not built.
+The web UI does not build from a fresh clone. `make web`, `make e2e` and the demo's step 5b need Bun and `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo, and that package is not published (#26). Without it, run the demo as `SKIP_BUILD=1 make demo` after `make build`: steps 1 to 5a pass, step 5b (the built-UI check) fails, and `http://127.0.0.1:4242` serves a page saying the UI is not built. `DEMO_SKIP_UI=1` records 5b as SKIP instead, which is how CI runs it.
 
 ## Layout
 
 ```
 coal/
+  .claude/skills/               Repo skills for Claude Code: drift-review
+  .github/                      CI and site deploy workflows, the pull request template
   CLAUDE.md                     Instructions for Claude Code
   CONTRIBUTING.md               How to help now
   Makefile                      Build, test and demo targets
@@ -64,8 +68,10 @@ coal/
     04-INTENT-MANIFEST.md       The open standard (v0.1)
     05-MVP-TASKS.md             Ordered build tasks with acceptance criteria
     06-DECISIONS.md             Architecture decision records
+    07-DRIFT.md                 Sources of truth in order, make check, the drift review, changing the vision
+    drift/                      Drift review reports
     poc/                        PLAN, STATUS and DEMO for the implementation
-  internal/                     The library: app, capture, daemon, fold, importer, index,
+  internal/                     The library: app, capture, daemon, drift, fold, importer, index,
                                 manifest, marker, mcpserver, metrics, paths, queue, store, summarize
   spec/
     intent-manifest.schema.json JSON Schema for the manifest, embedded in the binary

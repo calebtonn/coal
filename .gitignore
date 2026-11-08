@@ -8,3 +8,6 @@ web/node_modules/
 web/dist/*
 !web/dist/.gitkeep
 _site/
+
+# Local Claude Code settings (the COAL hooks for this checkout)
+.claude/settings.local.json

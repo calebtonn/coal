@@ -23,8 +23,10 @@ COAL is pre-alpha. There is no release and no install path; `coal` is built from
 
 - Prose in docs and UI copy is plain and direct, with no em-dashes.
 - COAL is a record of work. Do not call it memory in UI copy, tool descriptions or docs (ADR-008). `docs/01-THESIS.md` is the one exception: it uses the word to place COAL among memory systems.
-- `spec/intent-manifest.schema.json` is the source of truth. The web validator is generated from it with `bun run gen:validator` in `web/`, and a test fails if the two drift. Change the schema, then regenerate.
+- `spec/intent-manifest.schema.json` is the source of truth for the manifest. The web validator is generated from it with `bun run gen:validator` in `web/`, and a test fails if the two drift. Change the schema, then regenerate. When documents disagree, accepted ADRs come first and the schema second (docs/07-DRIFT.md has the full order).
 - Never delete user data, never bind to anything but `127.0.0.1`, and never add telemetry or network calls the user did not configure.
+
+Before you open a pull request, run `make GO=/path/to/go check` and fill in the template in `.github/pull_request_template.md`. `docs/07-DRIFT.md` says what the check enforces, which document wins when two disagree, and how a change to the vision is made on purpose.
 
 ## Using AI tools
 
