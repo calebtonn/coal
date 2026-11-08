@@ -158,7 +158,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-014: Keep history of manifest changes
 
-**Status.** Accepted 2026-11-05. Status and decision reworded on 2026-11-07 to describe the implementation (ADR-018). Two constraints: a hook never runs git (SessionEnd has a 1.5 s budget), it only marks `.history-pending` through deferred history; the daemon tick commits `manifests/` in a batch under the store-wide `.git.lock` once that marker has been quiet for two seconds, and `coal queue drain` or any non-hook CLI command commits what is pending as soon as it opens the store. Uses the `git` on PATH; if none, skip silently. Landed in the proof of concept (M11).
+**Status.** Accepted 2026-11-05. Status and decision reworded on 2026-11-07 to describe the implementation (ADR-018). Two constraints: a hook never runs git (SessionEnd has a 1.5 s budget), it only marks `.history-pending` through deferred history; the daemon tick commits `manifests/` in a batch under the store-wide `.git.lock` once that marker has been quiet for two seconds, and `coal queue drain` or any non-hook CLI command commits what is pending as soon as it opens the store. Uses the `git` on PATH; if none, skip silently. Landed in the proof of concept (M11). Noted on 2026-11-08: the adapter installs the SessionEnd hook with a 5 second timeout (`cmd/coal/adapter.go`); the hook only queues an event.
 
 **Context.** Manifests are mutable. `nextStep`, `status` and `openQuestions` are overwritten in place, so there is no way to answer "what was next last week", to see when an intent was abandoned, or to recover from a bad write by a model.
 
@@ -184,7 +184,7 @@ Considered: an append-only event log per manifest with the manifest as a project
 
 ## ADR-016: Capture lifecycle and the resume moment
 
-**Status.** Accepted 2026-11-05. Resolves #1, #2, #3. Consequences amended on 2026-11-07 for the order of extraction and the summarizer (ADR-018).
+**Status.** Accepted 2026-11-05. Resolves #1, #2, #3. Consequences amended on 2026-11-07 for the order of extraction and the summarizer (ADR-018). Noted on 2026-11-08: the adapter installs the SessionEnd hook with a 5 second timeout (`cmd/coal/adapter.go`); the hook only queues an event.
 
 **Context.** The first draft assumed `Stop` meant end of session, that a hook could ask the running model for a summary, and that a `SessionStart` hook could make the assistant speak before the user typed. None of those are true of Claude Code hooks: `Stop` fires after every assistant turn, `SessionEnd` is the per-session event with a 1.5 second budget, a command hook cannot query the session's model, and no assistant turn happens until the user sends one.
 

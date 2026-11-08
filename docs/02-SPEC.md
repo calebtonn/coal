@@ -51,7 +51,7 @@ A file or URI produced during a session. Registered artifacts are copied into co
 
 ```
 ~/.coal/
-  config.json                  markers, captureExtensions, summarizer
+  config.json                  version, markers, captureExtensions, summarizer, skippedHashSalt (the salt for blind hashes; never logged, and config.json is outside the history)
   manifests/<id>.json          one file per manifest, the truth
   manifests/.<id>.lock         per-manifest write lock
   artifacts/<sha256 hex>       content-addressed bodies, append only

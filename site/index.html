@@ -646,7 +646,7 @@ footer .right { margin-left: auto; }
             <div class="seam" style="background:#3fb0aa"></div>
             <code class="field" style="color:#1d6b65">artifacts[]</code>
             <h3>The artifacts</h3>
-            <p>Pages, scripts and docs, copied in and addressed by their SHA-256 hash, so the record survives a moved file or a deleted chat. By default that means HTML, Markdown, Python and TypeScript; the list is a setting. Each one notes which tool and model made it.</p>
+            <p>Pages, scripts and docs, copied in and addressed by their SHA-256 hash, so the record survives a moved file or a deleted chat. By default that means HTML, Markdown, Python and TypeScript; the list is a setting. Each one notes the tool that made it, and the model when the tool reports one (today the Claude Code hooks and importer do).</p>
           </article>
           <article class="panel card reveal">
             <div class="seam" style="background:#2e3a52"></div>
@@ -671,7 +671,7 @@ footer .right { margin-left: auto; }
         <ol class="panel timeline reveal">
           <li><span class="dot" aria-hidden="true"></span><code>SessionStart</code><p>COAL finds the record for this folder and puts the next step on screen.</p></li>
           <li><span class="dot" aria-hidden="true"></span><code>PostToolUse</code><p>Claude writes <code>budget.html</code>. COAL registers it as an artifact. On the first write it creates the record, using your first message as the summary, and drops a small <code>.coal</code> marker in the project.</p></li>
-          <li><span class="dot" aria-hidden="true"></span><code>Stop</code><p>After each turn, COAL updates the last activity time and nothing else, so the hook stays quick.</p></li>
+          <li><span class="dot" aria-hidden="true"></span><code>Stop</code><p>After each turn, COAL updates the last activity time and keeps the last reply for the end of the session, and nothing else, so the hook stays quick.</p></li>
           <li><span class="dot" aria-hidden="true"></span><code>SessionEnd</code><p>A job is queued and the hook returns at once. If Claude did not record the next step during the session, COAL extracts a short summary and next step from the transcript when the queue is next folded: at your next session start, or within seconds if <code>coal serve</code> is running.</p></li>
         </ol>
       </div>
@@ -691,11 +691,12 @@ footer .right { margin-left: auto; }
           <span class="t-dim">Household <b>budget</b> tracker as a single HTML page</span></pre>
           </figure>
         </div>
-        <figure class="window reveal" aria-label="Mockup of a chat in an MCP client: asked for the budget thing, the tool calls coal_find and shows the record with its next step">
+        <figure class="window reveal" aria-label="Mockup of a chat in an MCP client: asked for the budget thing, the tool calls coal_find and coal_get and shows the record with its next step">
           <div class="bar"><span class="dots"><i></i><i></i><i></i></span>any MCP client<span class="tag">Mockup</span></div>
           <div class="chat">
             <div class="bubble user">Find the budget thing I built</div>
             <div class="toolcall">called <b>coal_find</b>({ query: "budget" })</div>
+            <div class="toolcall">called <b>coal_get</b>({ id: "019a3f2c" })</div>
             <div class="result">
               <strong>Household budget tracker as a single HTML page</strong>
               <div class="row"><span class="pill">active</span><span class="pill amber">your words</span><span>1 artifact · budget.html</span></div>
@@ -778,7 +779,7 @@ footer .right { margin-left: auto; }
           </figure>
           <ul class="notes">
             <li class="panel reveal"><b>intent.source</b><span>Who wrote the summary: you or a model. Search ranks your own words first.</span></li>
-            <li class="panel reveal"><b>artifacts[].hash</b><span>SHA-256 of the copy in <code>~/.coal/artifacts/</code>, matching the latest entry in <code>versions[]</code>, which keeps every version COAL recorded. A version whose body was not copied (possible secret, too large, purged) keeps a salted blind hash and a skipped reason instead. The original path is kept too, but it can go stale.</span></li>
+            <li class="panel reveal"><b>artifacts[].hash</b><span>SHA-256 of the copy in <code>~/.coal/artifacts/</code>, matching the latest entry in <code>versions[]</code>, which keeps every version COAL recorded. A version whose body was not copied (possible secret, too large) keeps a salted blind hash and a skipped reason instead. A purged version keeps its hash and is marked purged. The original path is kept too, but it can go stale.</span></li>
             <li class="panel reveal"><b>state.nextStep</b><span>The line every resume starts from.</span></li>
             <li class="panel reveal"><b>contexts[]</b><span>Where this work lives. When a project has no <code>.coal</code> marker, SessionStart uses it to find the record.</span></li>
             <li class="panel reveal"><b>provenance</b><span>Which tool and model wrote the record. It never stores tokens or secrets.</span></li>
@@ -801,7 +802,7 @@ footer .right { margin-left: auto; }
           <ol>
             <li><b>Local first.</b> Everything lives in <code>~/.coal/</code>. No account. The only server is the daemon on your own machine.</li>
             <li><b>Files are the truth.</b> Plain JSON is the record. The search index is SQLite and can be deleted and rebuilt from the files.</li>
-            <li><b>Your words first.</b> The summary is what you typed. A model can suggest a better one, but it goes in a separate field unless you say yes.</li>
+            <li><b>Your words first.</b> The summary is what you typed. A model can suggest a better one, but it goes in a separate field. Once the summary is in your words, it changes only when you rename it yourself with <code>coal rename</code>.</li>
             <li><b>No telemetry.</b> No network calls you did not set up yourself. The daemon listens on 127.0.0.1 only.</li>
             <li><b>Never deletes.</b> Remove means move to the trash folder. The one exception is <code>coal purge</code>, which deletes an artifact body that holds a secret after you confirm; the record stays. When git is installed, every CLI or MCP change to a record is a commit, and the hooks' writes are committed in batches by the daemon or by the next <code>coal</code> command.</li>
             <li><b>Open, all of it.</b> Apache 2.0: the schema, the library, the CLI and every adapter. No paid tier.</li>
