@@ -1,0 +1,96 @@
+name: CI
+
+# Builds, vets and tests the Go module on Linux and macOS, runs the demo
+# without the UI step, and runs `make check` (gofmt, vet, the drift tests
+# and the site build). Runs on every pull request and on every push to main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  go:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The scripts need GNU bash 4+ and GNU coreutils (realpath -m). macOS
+      # ships bash 3 and BSD tools, so install the GNU ones and put them
+      # first on PATH. coreutils installs its tools as grealpath and so on;
+      # the gnubin directory holds them under their plain names.
+      - name: Install GNU tools (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          brew install bash coreutils jq
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: make GO=$(which go) vet
+
+      - name: Build
+        run: make GO=$(which go) build
+
+      - name: Test
+        if: runner.os != 'macOS'
+        run: make GO=$(which go) test
+
+      # On macOS the packages with known darwin failures run in a separate
+      # soft step below; everything else must pass here.
+      - name: Test (macOS, packages that must pass)
+        if: runner.os == 'macOS'
+        run: go test $(go list ./... | grep -v /node_modules/ | grep -v -E '/(cmd/coal|internal/daemon|internal/importer/claudecode|internal/store)$')
+
+      # Known darwin failures, each with its issue:
+      #   #22 internal/daemon
+      #   #23 internal/importer/claudecode
+      #   #31 cmd/coal (the resume tests fail when the project path goes through the /var symlink)
+      #   #24 internal/store
+      # The PR that closes each issue removes its package from this list and
+      # from the exclusion in the step above. When this list is empty, delete
+      # this step and the one above and run plain `make GO=$(which go) test`
+      # on macOS too. Never exclude a package without an issue number beside it.
+      - name: Test (macOS, known failures)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: go test ./cmd/coal ./internal/daemon ./internal/importer/claudecode ./internal/store
+
+      # SKIP_BUILD skips the UI build, which needs Bun and the unpublished
+      # ../web-framework checkout (#26). DEMO_SKIP_UI skips the built-UI
+      # assertion (step 5b); the daemon, API and preview checks still run.
+      - name: Demo
+        run: SKIP_BUILD=1 DEMO_SKIP_UI=1 make GO=$(which go) demo
+
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: make check
+        run: make GO=$(which go) check

@@ -24,7 +24,7 @@ It runs on your machine. The record is a folder of JSON files you can read with 
 
 ## Status
 
-Pre-alpha, and being built in the open. There is no release and no install path yet; `coal` is built from source with `make GO=/path/to/go build`, which needs Go 1.27 and git and puts the binary at `.sandbox/bin/coal`. `main` holds the spec, the decisions behind it, the task list (`docs/05-MVP-TASKS.md`) and the Phase 1 implementation in Go. The code began as Dave Nicoll's proof of concept on the `poc/go` branch; ADR-018 adopted it as the implementation, and it has been on `main` since 2026-11-07. It runs the demo from a recorded Claude Code session: capture through the hooks, find over MCP and from the CLI, the resume line at session start, and `coal resume`. It was run once against a live Claude Code session on macOS on 2026-11-07: the hooks captured a manifest, the model recorded state over MCP, a plain new session offered to continue, and `coal resume` resumed. Nine bugs from that run are open as issues #20 to #28, among them three Go test packages that fail on macOS. The web UI depends on a package that is not published, so `make web` works only with the sibling checkout; without it the binary still builds and serves a placeholder page at `/`. [`docs/02-SPEC.md`](docs/02-SPEC.md) is the spec, [`docs/06-DECISIONS.md`](docs/06-DECISIONS.md) holds the decisions, and [`docs/poc/STATUS.md`](docs/poc/STATUS.md) is the build log. If you want to follow along or help, read the spec, look through the code, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
+Pre-alpha, and being built in the open. There is no release and no install path yet; `coal` is built from source with `make GO=/path/to/go build`, which needs Go 1.27 and git and puts the binary at `.sandbox/bin/coal`. `main` holds the spec, the decisions behind it, the task list (`docs/05-MVP-TASKS.md`) and the Phase 1 implementation in Go. The code began as Dave Nicoll's proof of concept on the `poc/go` branch; ADR-018 adopted it as the implementation, and it has been on `main` since 2026-11-07. It runs the demo from a recorded Claude Code session: capture through the hooks, find over MCP and from the CLI, the resume line at session start, and `coal resume`. It was run once against a live Claude Code session on macOS on 2026-11-07: the hooks captured a manifest, the model recorded state over MCP, a plain new session offered to continue, and `coal resume` resumed. Nine bugs from that run are open as issues #20 to #28, and a tenth, #31, was found on 2026-11-08 after it; among them four Go test packages fail on macOS (#22, #23, #24, #31). The web UI depends on a package that is not published, so `make web` works only with the sibling checkout; without it the binary still builds and serves a placeholder page at `/`. [`docs/02-SPEC.md`](docs/02-SPEC.md) is the spec, [`docs/06-DECISIONS.md`](docs/06-DECISIONS.md) holds the decisions, and [`docs/poc/STATUS.md`](docs/poc/STATUS.md) is the build log. If you want to follow along or help, read the spec, look through the code, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
 
 ## Build it
 
@@ -32,8 +32,10 @@ You need Go 1.27 and git. The demo scripts also need GNU bash 4+, GNU coreutils,
 
 ```
 make GO=/path/to/go build               # builds .sandbox/bin/coal
-make GO=/path/to/go test                # three packages fail on macOS today (#22, #23, #24)
+make GO=/path/to/go test                # four packages fail on macOS today (#22, #23, #24, #31)
 SKIP_BUILD=1 make GO=/path/to/go demo   # the five definition-of-done steps in a fresh .sandbox/demo-*/
+SKIP_BUILD=1 DEMO_SKIP_UI=1 make GO=/path/to/go demo   # the same, with the built-UI check (5b) recorded as SKIP (#26)
+make GO=/path/to/go check               # gofmt, vet, the drift tests and the site build; run it before a PR
 ```
 
 Run the binary with `COAL_HOME` set, or pass `--home`:
@@ -45,12 +47,14 @@ export COAL_HOME=$PWD/.sandbox/coal
 .sandbox/bin/coal find budget
 ```
 
-The web UI does not build from a fresh clone. `make web`, `make e2e` and the demo's step 5 need Bun and `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo, and that package is not published (#26). Without it, run the demo as `SKIP_BUILD=1 make demo` after `make build`: steps 1 to 4 pass, step 5 fails on the UI check, and `http://127.0.0.1:4242` serves a page saying the UI is not built.
+The web UI does not build from a fresh clone. `make web`, `make e2e` and the demo's step 5b need Bun and `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo, and that package is not published (#26). Without it, run the demo as `SKIP_BUILD=1 make demo` after `make build`: steps 1 to 5a pass, step 5b (the built-UI check) fails, and `http://127.0.0.1:4242` serves a page saying the UI is not built. `DEMO_SKIP_UI=1` records 5b as SKIP instead, which is how CI runs it.
 
 ## Layout
 
 ```
 coal/
+  .claude/skills/               Repo skills for Claude Code: drift-review
+  .github/                      CI and site deploy workflows, the pull request template
   CLAUDE.md                     Instructions for Claude Code
   CONTRIBUTING.md               How to help now
   Makefile                      Build, test and demo targets
@@ -64,8 +68,10 @@ coal/
     04-INTENT-MANIFEST.md       The open standard (v0.1)
     05-MVP-TASKS.md             Ordered build tasks with acceptance criteria
     06-DECISIONS.md             Architecture decision records
+    07-DRIFT.md                 Sources of truth in order, make check, the drift review, changing the vision
+    drift/                      Drift review reports
     poc/                        PLAN, STATUS and DEMO for the implementation
-  internal/                     The library: app, capture, daemon, fold, importer, index,
+  internal/                     The library: app, capture, daemon, drift, fold, importer, index,
                                 manifest, marker, mcpserver, metrics, paths, queue, store, summarize
   spec/
     intent-manifest.schema.json JSON Schema for the manifest, embedded in the binary

@@ -4,19 +4,27 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-001: Local-first, files as source of truth
 
+**Status.** Accepted.
+
 **Context.** The thesis is user ownership of intent and artifacts. A hosted database contradicts that on day one.
 
 **Decision.** `~/.coal/` holds plain JSON manifests and content-addressed artifact bodies. SQLite is a derived index only.
 
 **Consequences.** No sync in MVP. Multi-device is a Phase 4 problem solved by syncing files (e.g. encrypted directory sync), not by a server owning the data.
 
+**In the code.** `internal/paths` resolves the data directory. `internal/store` writes the manifests and the content-addressed artifact bodies as plain files. `internal/index` is the derived SQLite index, and `cmd/coal/find.go` holds coal reindex, the command that rebuilds it from the manifest files alone.
+
 ## ADR-002: MCP as the primary read/write interface for AI tools
+
+**Status.** Accepted.
 
 **Context.** Every major AI tool is adopting MCP. Building vendor-specific plugins for each would be a treadmill.
 
 **Decision.** The MCP server is the canonical integration point. CLI and REST exist for humans and scripts, not for models.
 
 **Consequences.** COAL works with any future MCP client without changes. Capture still needs per-tool adapters where lifecycle hooks are needed (Claude Code first).
+
+**In the code.** `internal/mcpserver` is the MCP server and `cmd/coal/mcp.go` starts it over stdio. The REST API for humans and scripts is `internal/daemon/api.go`; the CLI is `cmd/coal`.
 
 ## ADR-003: Claude Code hooks for first capture, no browser capture in MVP
 
@@ -28,13 +36,19 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Consequences.** The MVP proves capture, find, and resume for a developer audience first. The "HTML buried in a chat" case on claude.ai is served in MVP only by manual `coal add` from a downloaded artifact.
 
+**In the code.** `cmd/coal/hook.go` receives the Claude Code hook events and `internal/capture/claudecode.go` translates them. `cmd/coal/adapter.go` installs the hooks. There is no browser capture; the manual path, coal add, is in `cmd/coal/manifests.go`.
+
 ## ADR-004: Full-text search before semantic search
+
+**Status.** Accepted.
 
 **Context.** Vector search needs an embedding model, which means either a local model or a network call.
 
 **Decision.** FTS5 only in MVP. Intent summaries are short and written in the user's words; keyword match is usually enough.
 
 **Consequences.** "Find the thing about money" may miss "budget tracker." Acceptable for MVP; revisit with a local embedding model in Phase 2.
+
+**In the code.** `internal/index/index.go` creates the FTS5 table and `internal/index/search.go` builds the query and ranks with bm25. `cmd/coal/find.go` is the command line entry; the MCP tool is in `internal/mcpserver/tools.go`. There is no embedding model anywhere in `go.mod`.
 
 ## ADR-005: TypeScript monorepo
 
@@ -48,13 +62,19 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-006: Open source under Apache 2.0, spec published separately
 
+**Status.** Accepted 2026-11-04.
+
 **Context.** Adoption depends on trust; trust depends on auditability. The schema matters more than the implementation.
 
 **Decision.** Code and spec both Apache 2.0. The spec gets its own repo and versioning once there is a second implementer.
 
 **Consequences.** Decided 2026-11-04: fully open source, no paid tier planned. Sync, org install and any hosted piece are open too. If that ever changes it needs a new ADR and a check against the author's employment terms.
 
+**In the code.** `LICENSE` is the Apache 2.0 text and covers the whole repository, spec included. The spec still lives in this repo at `spec/intent-manifest.schema.json`; `site/build.sh` and `.github/workflows/pages.yml` publish it at its $id.
+
 ## ADR-007: The whiteboard pipeline is deferred
+
+**Status.** Accepted.
 
 **Context.** The original sketch routed signals through API Gateway, EventBridge, Lambda, Glue, S3, and SageMaker into Agent Core.
 
@@ -62,7 +82,11 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Consequences.** If Phase 3 ever needs hosted inference, it is a per-user opt-in that reads the local manifests, not a central pipeline that all signals flow through by default.
 
+**In the code.** Nothing implements this decision; what keeps the absence true is `go.mod`, which has no cloud SDK among its direct requires, and the dependency check in `internal/drift`, which fails when a direct dependency outside the ADR-018 list is added.
+
 ## ADR-008: COAL is a record of work, not a memory
+
+**Status.** Accepted.
 
 **Context.** Mem0 OpenMemory and the platforms' built-in memory store facts, preferences, or session notes across tools. Positioning COAL as "memory" invites a direct comparison on their terms and loses.
 
@@ -70,7 +94,11 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Consequences.** The word "memory" does not appear in UI copy, tool descriptions, or docs. The MCP tools are named around work (`coal_find`, `coal_record_intent`), not recall. The headline feature is resume: the next tool opens by offering to continue, driven by `contexts[]` and `state.nextStep`.
 
+**In the code.** The rule is enforced by tests: `internal/mcpserver/server_test.go` checks every tool description and the server instructions, `internal/capture/capture_test.go` checks the hook output, and `internal/drift` checks the docs, the site and the web UI copy. The tool names live in `internal/mcpserver/tools.go`; the resume moment is built in `internal/capture/resume.go` and launched by `cmd/coal/resume.go`.
+
 ## ADR-009: The user writes the intent summary
+
+**Status.** Accepted.
 
 **Context.** A record of work is only as good as its index, and `intent.summary` is the index. If the model writes it, the record fills with paraphrases that sound alike. If the user writes it, each entry costs a sentence and compounds like a commonplace book.
 
@@ -78,13 +106,19 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Consequences.** Some summaries will be rough ("build me a thing for the budget"). That is acceptable; it is what the user will search for. A later `coal rename` lets the user tighten a summary by hand.
 
+**In the code.** `internal/capture/summary.go` takes the user's first message and cuts it to 200 characters; `internal/fold/fold.go` writes it as intent.summary with intent.source set to user. The model's proposals arrive through coal_update_state in `internal/mcpserver/tools.go`, which writes state.summary, state.nextStep and intent.goal; extraction in `internal/capture/extract.go` writes state.summary and state.nextStep only. `internal/index/search.go` ranks user-written summaries first on ties. `cmd/coal/rename.go` is coal rename.
+
 ## ADR-010: Domains
+
+**Status.** Accepted 2026-11-05.
 
 **Context.** Two domains were registered on 2026-11-04: coalmine.io and coalmine.app.
 
 **Decision.** coalmine.io is the standard: the published schema (`/schema/intent-manifest/<version>.json`), the spec, the docs and the project site. coalmine.app is reserved for anything that runs: the hosted MCP endpoint, sync, or an API, if and when any of those exist. Package names, the CLI and the data directory stay `coal`.
 
 **Consequences.** The schema `$id` is `https://coalmine.io/schema/intent-manifest/0.1.json` and is served at that path. In Phase 1 nothing runs on coalmine.app; it redirects to coalmine.io. The one-page project site at coalmine.io is built from `site/` and deployed by `.github/workflows/pages.yml`, together with the schema at its `$id`. Nothing else is hosted before the Phase 1 retro.
+
+**In the code.** The $id is in `spec/intent-manifest.schema.json`. `site/build.sh` copies the schema to the path the $id names and assembles `site/index.html` and `site/404.html` into the site; `.github/workflows/pages.yml` deploys it. The marker schema URL that `internal/marker/marker.go` writes is not published yet (#27).
 
 ## ADR-011: One capture contract, adapters for every coding agent with hooks
 
@@ -96,6 +130,8 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Consequences.** A little extra work in T08 kept the contract separate from Claude Code's payload shapes (`internal/capture`: the contract in `event.go`, the Claude Code translation in `claudecode.go`). Phase 2's "done when" (a manifest written by something other than Claude Code, resumed from a third tool) becomes reachable with two small adapters. ADR-003's MVP scope stands; only its reasoning changes.
 
+**In the code.** The capture contract is `internal/capture/event.go`; the Claude Code adapter is `internal/capture/claudecode.go`. `cmd/coal/hook.go` is the hook entry point and `cmd/coal/adapter.go` installs and removes adapters. Claude Code is the only adapter today.
+
 ## ADR-012: Import from session records already on disk
 
 **Status.** Accepted 2026-11-05. First Phase 2 item.
@@ -106,6 +142,8 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Consequences.** The browser extension moves later and may not be needed. Transcript formats are undocumented and change, so each importer is versioned and skips what it cannot parse. Import is batch, so chat-side state lags until the next run. The record has history on day one, which makes the retro a fairer test. Since 2026-11-07 `coal import claude-code` is on `main` (ADR-018); its symlink bug is #23. Import from Codex sessions and from chat exports is still open.
 
+**In the code.** `internal/importer/claudecode` reads Claude Code session records and proposes manifests; `cmd/coal/import.go` is coal import claude-code. There is no Codex or chat export importer yet.
+
 ## ADR-013: The project directory anchors the intent
 
 **Status.** Accepted 2026-11-05, with the `markers` setting. Resolves #4. Marker shape and schema URL filled in on 2026-11-07 from the implementation (ADR-018).
@@ -115,6 +153,8 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 **Decision.** On the first capture in a directory, COAL writes a `.coal` file at the git top level (or cwd when there is no repo) holding `{"$schema": "https://coalmine.io/schema/coal-marker/0.1.json", "manifest": "<id>"}` and nothing else. The marker schema URL is what COAL writes; it is not yet published (the path returns 404), tracked as #27. Every later session from any tool in that directory or below attaches to that manifest. The manifest itself stays in `~/.coal/manifests/`, so there is still one source of truth (ADR-001). By default the marker is listed in `.git/info/exclude`; the user can choose to commit it. `coal new` in a directory with a marker creates a second manifest and makes it the active one; the marker then holds `{"manifest": "<active id>", "manifests": ["<id>", ...]}`, where `manifest` is the active one and `manifests` lists every manifest anchored in the directory. Optionally, `coal adapter install` adds one line to the project's `AGENTS.md` or `CLAUDE.md` telling agents to call `coal_get` with the id in `.coal` at the start of work, so agents with no COAL adapter can still resume.
 
 **Consequences.** Identity for coding work is deterministic and needs no model. Chat work has no directory and still relies on grouping (ADR-012). COAL writes a file into user projects, which some people will not want, so `markers: "project" | "none"` is a setting, with `none` falling back to `contexts[]` path matching.
+
+**In the code.** `internal/marker/marker.go` finds the project root, writes and reads the .coal file and lists it in the repo's exclude file; `internal/marker/match.go` matches a directory to a manifest. `internal/fold/fold.go` writes the marker on first capture and reads the markers setting from `internal/fold/config.go`. `cmd/coal/new.go` is coal new, which adds a second manifest to a marker. The AGENTS.md or CLAUDE.md line is not implemented.
 
 ## ADR-014: Keep history of manifest changes
 
@@ -128,6 +168,8 @@ Considered: an append-only event log per manifest with the manifest as a project
 
 **Consequences.** Git becomes a dependency: the `git` on PATH, and without one there is no history. History comes with ordinary tools: `git log`, `git diff`, `git revert`. Phase 4 sync can start from syncing a git repository. Lost updates are handled by `rev` (ADR-019, which closed #6); history only makes them visible. Only `manifests/` is committed; session scratch and open copies stay out of the history. Commits are not one per write: writers that finish close together can share a commit, so a commit message names the write that took the lock, not every change in it. Hooks open the store with deferred history: a write touches `.history-pending` and runs no git, the daemon commits once that marker has been quiet for two seconds, and any non-hook command commits what is pending when it opens the store.
 
+**In the code.** `internal/store/git.go` runs git and keeps everything but the manifests out of the history; `internal/store/history.go` is the deferred history and the pending marker. The daemon tick that commits is in `internal/daemon/daemon.go`; coal queue drain is in `cmd/coal/hook.go`; `cmd/coal/log.go` is coal log.
+
 ## ADR-015: Use Agent Trace for line-level code provenance
 
 **Status.** Accepted 2026-11-05.
@@ -137,6 +179,8 @@ Considered: an append-only event log per manifest with the manifest as a project
 **Decision.** `producer` stays minimal: tool, model, sessionRef. COAL does not add line-level attribution to the manifest. When an Agent Trace record exists for a code artifact, or an adapter can produce one, the artifact references it under `ext["dev.agent-trace"]` with the record's URI or hash. COAL owns intent and state; Agent Trace owns which lines came from where.
 
 **Consequences.** Code provenance from COAL can be read by tools that adopt Agent Trace, at the cost of one extension key. Agent Trace is still a draft, so the reference stays under `ext` until v1.0 of both specs, when it can be reconsidered as a first-class field. Reference: https://agent-trace.dev/
+
+**In the code.** `spec/intent-manifest.schema.json` defines producer and the artifact ext object; `internal/manifest/manifest.go` carries them through unchanged. `docs/04-INTENT-MANIFEST.md` documents the dev.agent-trace key. No adapter writes an Agent Trace record yet.
 
 ## ADR-016: Capture lifecycle and the resume moment
 
@@ -151,6 +195,8 @@ Considered: an append-only event log per manifest with the manifest as a project
 - The resume moment has two forms. Plain `claude` in a matched directory: the `SessionStart` hook prints a `systemMessage` banner with the next step before the user types, and injects `additionalContext` so the first reply opens by offering to continue. `coal resume`: a launcher that finds the manifest for the directory and starts the harness with a first prompt already supplied, so the first turn is the resume. The demo uses `coal resume`.
 
 **Consequences.** `coal resume` moves a small piece of the Phase 2 entry-point idea into Phase 1. The headline wording changes from "the tool speaks first before you type" to "the next session opens with the next step." How `SessionStart` output is displayed has changed between Claude Code releases; T09 verified the banner and the offer to continue on Claude Code 2.1.312 on 2026-11-07. The configured summarizer does not replace extraction at fold time. Deterministic extraction always runs when the session end is folded, and when `config.summarizer` is set a summarize job is queued under `queue/summarize/` that only the daemon or `coal queue drain` runs later; its result replaces the extraction, and it is skipped when the model recorded state since the session started. A user without a running daemon still gets the extracted summary. The summarizer runs with no shell, a timeout and `COAL_SUMMARIZER=1` set, and hooks exit with nothing done under that variable, so the summarizer's own session is never captured.
+
+**In the code.** `cmd/coal/hook.go` dispatches the five hook events and `internal/capture/claudecode.go` turns them into capture events. `internal/queue` holds the events and jobs; `internal/fold/fold.go` folds them into manifests, and the daemon tick in `internal/daemon/daemon.go` drains the queue. Extraction is `internal/capture/extract.go`; the opt-in summarizer is `internal/summarize`. coal_update_state is in `internal/mcpserver/tools.go`. The SessionStart banner and additionalContext are built in `internal/capture/resume.go`; `cmd/coal/resume.go` is the coal resume launcher.
 
 ## ADR-017: Places for areas of work
 
@@ -179,7 +225,7 @@ Considered: a separate workspace object. Not for now: it is a second record type
 
 ## ADR-018: Adopt the Go proof of concept as the Phase 1 implementation
 
-**Status.** Accepted 2026-11-07. Supersedes ADR-005.
+**Status.** Accepted 2026-11-07. Supersedes ADR-005. Layout detail filled in on 2026-11-08 from the implementation: `internal/drift` joins the layout as a test-only package that adds no code to the binary.
 
 **Context.** ADR-005 chose a TypeScript monorepo. Three weeks later it had produced no code: two empty package READMEs and the workspace files. Meanwhile Dave Nicoll built a proof of concept in Go on the `poc/go` branch (`d041c64`) that implements the Phase 1 plan end to end: capture from Claude Code hooks, store, index, daemon, MCP server, web UI, import, history and resume. On 2026-11-07 it was built from a fresh clone on macOS. The demo's capture, find, resume banner and `coal resume` steps passed; only the web UI check did not, because the UI cannot be built there. A live Claude Code 2.1.312 session captured a manifest, recorded its state over MCP, opened the next plain session by offering to continue, and resumed through `coal resume`. The README says the schema is the product; the language of the first implementation is an implementation detail, and ADR-005 already allowed a Go implementation behind the same schema.
 
@@ -192,6 +238,8 @@ Layout: `cmd/coal` is the one binary, with the CLI, the daemon, the MCP server a
 `poc/go` was merged into `main` through the `adopt-go` branch on 2026-11-07 (PR 29); that branch is history and nothing is committed to it any more. The TypeScript, pnpm, Fastify, Zod and Vite+React sections of CLAUDE.md and the docs were retired, and the empty `packages/coal` and `packages/diamond` READMEs, the root `package.json` and `pnpm-workspace.yaml` were removed. ADR-005's two-package rule is replaced by one binary and internal packages; a package is split out only when a second implementer needs one piece alone.
 
 **Consequences.** CLAUDE.md, CONTRIBUTING, README and docs/02, 03 and 05 were updated in the same change (PR 29). Tests must pass on macOS and Linux; on 2026-11-07 three Go test packages failed on macOS, and each is tracked as an issue: the MIME table has no Markdown entry on macOS, so a `.md` artifact is served as plain text (#22); symlinked temp directories break the import and store tests, because the project root is resolved and the compared paths are not (#23); a store test expects `/proc` and the sensitive-path check misses a symlinked home and macOS Library paths (#24). Other bugs found in the same run are tracked the same way: a chat-only session overwrites `state.summary` (#20); `session_attached` and `resume_acted` only count file writes (#21); the `.coal` marker schema URL is not published (#27); `intent.summary` is cut at 200 characters mid-sentence (#28). None of them was fixed in that change; each is one issue and one later PR to `main`, and all of them are still open. The web UI depends on `@davenicoll/web-framework`, a private sibling checkout that is not published anywhere, so `make web`, `make e2e` and the demo's UI check only run on Dave's machine; the framework must be vendored or published before a release (#26). The demo scripts need GNU bash 4 or later and GNU coreutils until they are rewritten, and the Makefile expects Go under `~/.local/go`, so `GO=` must point at the installed Go 1.27 elsewhere (#25).
+
+**In the code.** The stack is `go.mod` and the `Makefile`. The layout is `cmd/coal`, `internal`, `spec`, `web`, `scripts`, `testdata/claude-code` and `docs/poc`, as the Decision lists them. `internal/drift` is a test-only package that checks the direct dependencies in `go.mod` against this ADR's list and adds no code to the binary.
 
 ## ADR-019: Artifact identity is (manifest, uri) with versions[]
 
@@ -213,3 +261,5 @@ An artifact with a `uri` is identified by (manifest, uri) and keeps its history 
 ADR-017 (Places, PR 19, Proposed) must build its "artifacts kept by reference" on `versions[]`: a version kept by reference records `uri`, `size` and a new `modifiedAt`, sets `skipped: "reference"`, and has no `hash`. `hash` therefore becomes optional on a version only when `skipped` is set. `intent.icon` is a hash, so the icon is always a copied artifact. ADR-017 must reference #5 and state that the `versions[]` model wins.
 
 **Consequences.** Readers written against the first draft keep working: the top-level artifact fields are unchanged and every new field is optional. Writers that ignore `rev` still write, but without the conflict check. `skipped` gains the value `"reference"` beside the secret reasons and `"purged"`. The schema in `spec/` and docs/04 carry these fields on `main` since ADR-018 (PR 29), and the schema served at the `$id` matches them. Because 0.1 is still Draft, no version bump is needed; after the retro, any further change to the schema needs a new version.
+
+**In the code.** The fields are in `spec/intent-manifest.schema.json` and the Go types in `internal/manifest/manifest.go`. `internal/store/store.go` increments rev on every write and returns a conflict when it moved; `internal/store/artifact.go` keeps versions[] by (manifest, uri) and mirrors the latest version into the top-level fields; `internal/store/secrets.go` decides when a body is skipped. `cmd/coal/purge.go` marks versions purged. `spec/examples/budget-tracker.manifest.json` shows the fields in use and is validated by `internal/manifest`.

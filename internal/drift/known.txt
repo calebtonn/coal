@@ -1,0 +1,5 @@
+# Checks that fail today for a reason tracked in an issue. One line each:
+# <check id>	#<issue>	<note>
+# A listed check that fails is logged, not failed. A listed check that passes
+# fails until its line is removed, in the PR that closes the issue.
+schema-published/marker	#27	the marker schema is not published

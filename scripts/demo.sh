@@ -2,10 +2,20 @@
 # End-to-end demo of the five definition-of-done steps, in a fresh
 # .sandbox/demo-<timestamp>/ holding coal/ (the data dir) and
 # projects/budget. Prints PASS or FAIL per step and exits non-zero on
-# any FAIL. SKIP_BUILD=1 skips `make web build`.
+# any FAIL. SKIP_BUILD=1 skips `make web build`. DEMO_SKIP_UI=1 marks the
+# built-UI assertion (step 5b) SKIP instead of FAIL, for machines without
+# the UI toolchain (#26); every other step still runs.
 set -uo pipefail
 . "$(dirname "$0")/sandbox-guard.sh"
 cd "$repo"
+echo "bash: $BASH_VERSION"
+echo "realpath: $(command -v realpath)"
+# The scripts need GNU realpath (-m). Apple's /bin/realpath lacks it, and
+# the failure would otherwise surface only inside step 1's replay output.
+realpath -m / >/dev/null 2>&1 || {
+	echo "realpath -m is not supported by $(command -v realpath); put GNU coreutils first on PATH (on macOS: brew install coreutils and add \$(brew --prefix coreutils)/libexec/gnubin)" >&2
+	exit 1
+}
 
 coal="$sandbox/bin/coal"
 if [ "${SKIP_BUILD:-}" != 1 ]; then
@@ -32,6 +42,10 @@ check() { # check <step label> <ok?> <detail>
 		failed=1
 	fi
 }
+skip() { # skip <step label> <reason>: recorded in the summary, never a failure
+	results+=("SKIP  $1: $2")
+	echo "SKIP  $1: $2"
+}
 timings="$demo/timings.txt"
 
 step "1. Capture: replay a recorded Claude Code session through the hooks"
@@ -55,6 +69,10 @@ else
 	fi
 fi
 check "1. a manifest with the user's intent, the HTML artifact and the .coal marker" "$([ -z "$why" ]; echo $?)" "$why"
+if [ -n "$why" ]; then
+	# The replay's own output, without the timing lines, says what went wrong.
+	grep -v '^hook ' "$timings" | sed 's/^/  replay: /'
+fi
 
 step "2. Another tool finds it over MCP and reads the artifact"
 why=""
@@ -154,14 +172,24 @@ echo "  ui:       $(grep -i '^content-security-policy' <<<"$ui_head" | cut -c1-9
 echo "  artifact: $(grep -iE '^(content-type|content-security-policy)' <<<"$art_head" | tr -d '\r' | paste -sd ' ')"
 if [ "$(jq -r .ok <<<"$health" 2>/dev/null)" != true ]; then why="/health is not ok"
 elif ! jq -e --arg id "$id" '.results[] | select(.id == $id)' <<<"$api" >/dev/null 2>&1; then why="/api/manifests?q=budget lacks $id"
-elif ! grep -qi '^content-security-policy:' <<<"$ui_head" || ! grep -q 'data-wf-theme-init' "$demo/index.html"; then why="/ is not the built UI with a CSP"
+elif ! grep -qi '^content-security-policy:' <<<"$ui_head"; then why="/ has no CSP header"
 elif ! grep -qi '^content-type: text/html' <<<"$art_head" || ! grep -qi '^content-security-policy: sandbox' <<<"$art_head"; then why="artifact headers are wrong"
 elif ! grep -q "Household budget" "$demo/artifact.html"; then why="artifact body is not the HTML"
 fi
 kill "$serve_pid" 2>/dev/null
 wait "$serve_pid" 2>/dev/null
 trap - EXIT
-check "5. the daemon serves the UI, the search API and the sandboxed HTML preview" "$([ -z "$why" ]; echo $?)" "$why"
+check "5a. the daemon serves the search API and the sandboxed HTML preview" "$([ -z "$why" ]; echo $?)" "$why"
+
+# (b) The built UI. Building it needs Bun and the unpublished
+# @davenicoll/web-framework (#26), so DEMO_SKIP_UI=1 records a SKIP here.
+if [ "${DEMO_SKIP_UI:-}" = 1 ]; then
+	skip "5b. the UI is built" "not built in this run (#26)"
+else
+	why=""
+	grep -q 'data-wf-theme-init' "$demo/index.html" 2>/dev/null || why="/ is not the built UI"
+	check "5b. the UI is built and served at /" "$([ -z "$why" ]; echo $?)" "$why"
+fi
 
 step "Hook timings"
 grep '^hook ' "$timings" | sed 's/^/  /'
