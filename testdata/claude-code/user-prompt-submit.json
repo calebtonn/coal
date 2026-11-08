@@ -1,0 +1,8 @@
+{
+  "session_id": "7c1f3e2a-5b4d-4e8f-9a01-2b3c4d5e6f70",
+  "transcript_path": "/PROJECT/.claude-projects/-PROJECT-budget/7c1f3e2a-5b4d-4e8f-9a01-2b3c4d5e6f70.jsonl",
+  "cwd": "/PROJECT/budget",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Build me a household budget tracker as a single HTML page"
+}
