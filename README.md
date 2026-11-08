@@ -24,7 +24,28 @@ It runs on your machine. The record is a folder of JSON files you can read with 
 
 ## Status
 
-Pre-alpha, and being built in the open. There is nothing to install yet. `main` holds the spec, the decisions behind it, the task list (`docs/05-MVP-TASKS.md`) and the Phase 1 implementation: the Go proof of concept from the `poc/go` branch, adopted as the implementation in ADR-018 and merged. It runs the demo from a recorded Claude Code session and was run once against a live Claude Code session on macOS on 2026-11-07: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and `coal resume`. The Go binary builds with Go 1.27. The web UI depends on a package that is not published yet, so `make web` works only with the sibling checkout. [`docs/poc/STATUS.md`](docs/poc/STATUS.md) has the details. If you want to follow along or help, read the spec, look through the code, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
+Pre-alpha, and being built in the open. There is no release and no install path yet; `coal` is built from source with `make GO=/path/to/go build`, which needs Go 1.27 and git and puts the binary at `.sandbox/bin/coal`. `main` holds the spec, the decisions behind it, the task list (`docs/05-MVP-TASKS.md`) and the Phase 1 implementation in Go. The code began as Dave Nicoll's proof of concept on the `poc/go` branch; ADR-018 adopted it as the implementation, and it has been on `main` since 2026-11-07. It runs the demo from a recorded Claude Code session: capture through the hooks, find over MCP and from the CLI, the resume line at session start, and `coal resume`. It was run once against a live Claude Code session on macOS on 2026-11-07: the hooks captured a manifest, the model recorded state over MCP, a plain new session offered to continue, and `coal resume` resumed. Nine bugs from that run are open as issues #20 to #28, among them three Go test packages that fail on macOS. The web UI depends on a package that is not published, so `make web` works only with the sibling checkout; without it the binary still builds and serves a placeholder page at `/`. [`docs/02-SPEC.md`](docs/02-SPEC.md) is the spec, [`docs/06-DECISIONS.md`](docs/06-DECISIONS.md) holds the decisions, and [`docs/poc/STATUS.md`](docs/poc/STATUS.md) is the build log. If you want to follow along or help, read the spec, look through the code, and open an issue where something is wrong or unclear. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
+
+## Build it
+
+You need Go 1.27 and git. The demo scripts also need GNU bash 4+, GNU coreutils, `jq`, `curl` and `python3`; on macOS, `brew install bash coreutils jq` and put them first on `PATH`. The Makefile looks for Go at `~/.local/go/bin/go`; point `GO=` at yours if it lives elsewhere.
+
+```
+make GO=/path/to/go build               # builds .sandbox/bin/coal
+make GO=/path/to/go test                # three packages fail on macOS today (#22, #23, #24)
+SKIP_BUILD=1 make GO=/path/to/go demo   # the five definition-of-done steps in a fresh .sandbox/demo-*/
+```
+
+Run the binary with `COAL_HOME` set, or pass `--home`:
+
+```
+export COAL_HOME=$PWD/.sandbox/coal
+.sandbox/bin/coal init
+.sandbox/bin/coal version               # coal 0.1.0-poc and the Go version
+.sandbox/bin/coal find budget
+```
+
+The web UI does not build from a fresh clone. `make web`, `make e2e` and the demo's step 5 need Bun and `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo, and that package is not published (#26). Without it, run the demo as `SKIP_BUILD=1 make demo` after `make build`: steps 1 to 4 pass, step 5 fails on the UI check, and `http://127.0.0.1:4242` serves a page saying the UI is not built.
 
 ## Layout
 
@@ -51,11 +72,11 @@ coal/
     examples/                   Example manifests
   web/                          Web UI: Svelte 5, built with Bun, embedded in the binary
   scripts/                      Demo, session replay, MCP smoke test, sandbox guard
-  site/                         coalmine.io: the one-page site and the published schema
+  site/                         coalmine.io: the one-page site and the script that publishes it with the schema from spec/
   testdata/claude-code/         Recorded hook payloads and transcripts
 ```
 
-One binary. `coal` is what you install. The library lives under `internal/`. I will split a package out only if someone else needs one piece on its own.
+One binary. `coal` is the whole thing: CLI, daemon, MCP server and hooks, built from `cmd/coal`. The library lives under `internal/`. I will split a package out only if someone else needs one piece on its own.
 
 ## What the MVP covers
 

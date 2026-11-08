@@ -1,9 +1,9 @@
 # MVP Build Tasks
 
-**Status 2026-11-07.** The Go proof of concept on `poc/go` (ADR-018) is adopted as the Phase 1 implementation. It covers T01 to T11 and the T13 script in substance, mapped to the POC milestones and packages in `docs/poc/PLAN.md` and `docs/poc/STATUS.md` as follows. The tasks below keep their numbers and their original text.
+**Status 2026-11-07.** `main` holds the Go implementation (ADR-018). It began as Dave Nicoll's proof of concept on `poc/go` and was merged on 2026-11-07 (PR 29); `docs/poc/PLAN.md` and `docs/poc/STATUS.md` are its history. It covers T01 to T11 and the T13 script in substance. The tasks below keep their numbers; each body says what exists on `main` and what is left. By POC milestone and package:
 
-- T01: M0 scaffold (`go.mod`, `cmd/coal`, `Makefile`). The pnpm workspace scaffold as written is retired.
-- T02: M1 (`internal/manifest`, `spec/embed.go`, `coal validate`). The schema is hand-written JSON Schema validated by santhosh-tekuri/jsonschema; the Zod schema and generator as written are retired.
+- T01: M0 scaffold (`go.mod`, `cmd/coal`, `Makefile`). The pnpm workspace scaffold as written was retired.
+- T02: M1 (`internal/manifest`, `spec/embed.go`, `coal validate`). The schema is hand-written JSON Schema validated by santhosh-tekuri/jsonschema; the Zod schema and generator as written were retired.
 - T03: M2 (`internal/store`: atomic writes, `rev` compare-and-swap, artifact versions, trash).
 - T04: M3 (`internal/index`: modernc.org/sqlite with FTS5, `coal reindex`).
 - T05: M3 and M9 (`cmd/coal`: `find`, `show`, `open`, `add`, `rm`, `rename`, `log`, `purge`, `stats`).
@@ -11,122 +11,138 @@
 - T07: M4 (`internal/daemon`, `coal serve` on `net/http`, embedded UI).
 - T08: M6a and M6b (`internal/capture`, `internal/queue`, `internal/marker`, `internal/fold`; `coal hook`, `coal adapter install claude-code`).
 - T09: M6 and M11 (`coal hook session-start` banner and `additionalContext`; `coal resume`).
-- T10: M7 (`web/`, Svelte 5 built with Bun and embedded in the binary). Its framework dependency is unpublished, so the UI does not build from a fresh clone today; see the known bugs.
+- T10: M7 (`web/`, Svelte 5 built with Bun and embedded in the binary). Its framework dependency is unpublished, so the UI does not build from a fresh clone (#26).
 - T11: M11 history and M9 (deferred history from hooks, batched commits under `.git.lock`, `coal log`) and the daemon log rotation from M4.
-- T12 install path: the npm tarball as written is retired with the stack (ADR-018); the install path for the Go binary is not decided. `coal init` and the README quickstart parts stand. T12b schema publishing stays as written.
+- T12 install path: the npm tarball as written was retired with the stack (ADR-018). There is no release and no install path for the Go binary yet; `coal` is built from source and the install path is not decided. `coal init` and the README quickstart parts stand.
+- T12b: done. `site/build.sh` copies the schema to its `$id` path and `.github/workflows/pages.yml` deploys it; the live schema equals the committed file.
 - T13: M8 (`scripts/demo.sh`, `docs/poc/DEMO.md`). No recording yet.
 
-T14 stands and is the gate. These known bugs must be fixed before T14, each tracked as a GitHub issue: chat-only sessions overwrite `state.summary`; `session_attached` and `resume_acted` undercount; macOS test failures; demo scripts need GNU tools; web UI framework unpublished.
+T12, T13 and T14 are left, in that order. T14 is the gate. Nine open bugs, #20 to #28, must be fixed before it starts: a chat-only later session overwrites the model-recorded `state.summary` (#20); `session_attached` and `resume_acted` undercount (#21); three test packages fail on macOS (#22, #23, #24); the Makefile hardcodes `~/.local/go` and the demo scripts need GNU bash 4+ and coreutils (#25); the web UI framework is unpublished (#26); the `.coal` marker schema URL returns 404 (#27); `intent.summary` is a hard 200-character cut (#28).
 
-Ordered. Each task is sized for one Claude Code session. Do not start a task until the one before it passes its acceptance criteria. Commit after each task.
-
-Estimated total: six weeks of nights and weekends, or two weeks full time.
+Each task has acceptance criteria. A task is not done until they pass. Commit after each task.
 
 ## Week 1: Core
 
-### T01. Monorepo scaffold
-- pnpm workspace, TypeScript project references, Biome, Vitest configured at root
-- Two packages created with `package.json`, `tsconfig.json`, empty `src/index.ts`: `diamond` and `coal`; `packages/coal/web/` holds the Vite app
-- **Accept:** `pnpm install && pnpm -r build && pnpm -r test` exit 0 on a clean checkout
+### T01. Scaffold
+- **Done:** M0. One Go module at the repo root (`go.mod`, `module github.com/calebtonn/coal`, `go 1.27`) and one binary built from `cmd/coal`. The direct dependencies are cobra, the MCP Go SDK v1.8.0, santhosh-tekuri/jsonschema v6, modernc.org/sqlite, google/uuid and golang.org/x/text (ADR-018)
+- `cmd/coal/main.go` holds the cobra root with the `--home` flag; `coal version` prints `coal 0.1.0-poc (go1.27.3)`; the data directory comes from `--home`, then `COAL_HOME`, then `~/.coal` (`internal/paths`). Each command registers itself from its own file, so new commands do not touch `main.go`
+- `Makefile` targets: `build` (to `.sandbox/bin/coal`), `test`, `vet`, `fmt`, `web`, `dev`, `e2e`, `demo`, `demo-init`. `.gitignore` excludes `.sandbox/`, `.coal/`, `web/dist/` and `_site/`
+- Known bug: the Makefile defaults `GO` to `~/.local/go/bin/go`, so anyone else passes `GO=/path/to/go` (#25)
+- **Accept:** `make GO=/path/to/go build && .sandbox/bin/coal version` prints the version and `make vet` is clean (both verified on macOS on 2026-11-07); `make test` exits 0, which it does not yet on macOS, where three packages fail (#22, #23, #24)
 
-### T02. Manifest types and validation (diamond)
-- Zod schema matching `docs/04-INTENT-MANIFEST.md` exactly
-- `zod-to-json-schema` generates `spec/intent-manifest.schema.json`
-- Test: generated schema deep-equals the committed file (fails on drift)
-- Test: `spec/examples/*.json` all validate
-- Test: a manifest with a `sessionRef` that looks like a bearer token (`^Bearer `, `^sk-`, `^xox`) is rejected
-- **Accept:** tests pass; `pnpm --filter @coal/diamond schema:gen` is idempotent
+### T02. Manifest types and validation
+- **Done:** M1. `spec/intent-manifest.schema.json` is the hand-written JSON Schema 2020-12 for Intent Manifest 0.1, with `$id` `https://coalmine.io/schema/intent-manifest/0.1.json`; `spec/embed.go` embeds it in the binary as `spec.IntentManifestSchema`. There is no generator: the schema is the source and the Go types follow it
+- `internal/manifest` holds the types (`Manifest`, `Intent`, `Artifact`, `ArtifactVersion`, `State`, `Provenance`, `Link`, `Context`, `Owner`, `Privacy`), `NewID()` (lowercase UUIDv7), `Now()` (RFC 3339 UTC, second precision), `New(summary, source, provenance)` and `Validate([]byte) error`, which compiles the embedded schema once with santhosh-tekuri/jsonschema and reports one line per problem, each starting with the JSON pointer of the offending value. Unknown fields at every level are kept in an `Extra` map and written back, so an older reader never drops a newer writer's data
+- The `sessionRef` token rule lives in the schema itself: `provenance.sessionRef` has `not: {pattern: "^(Bearer |sk-|xox[abps]-|ghp_|github_pat_|AKIA)"}`, and `Validate` turns that failure into `looks like an auth token; sessionRef must be an opaque locator`. Ids must match the UUIDv7 pattern
+- `coal validate <file>...` prints `ok <file>` or the error lines per file and exits non-zero if any fails. The web UI's validator is generated from the same schema at build time (T10)
+- `spec/examples/` holds one example, `budget-tracker.manifest.json`, with `rev` and `versions[]` (ADR-019)
+- **Accept:** `go test ./internal/manifest/...` passes: `TestSchemaCompiles`, `TestExampleValidates`, `TestTokenSessionRefFails` (`Bearer abc`, `sk-abc`, `ghp_abc`, `xoxb-1`, `AKIAABC` are all rejected), `TestNonV7IDFails`, `TestUnknownTopLevelFieldsPassAndSurvive`; `.sandbox/bin/coal validate spec/examples/budget-tracker.manifest.json` prints `ok`
 
-### T03. File storage (diamond)
-- `CoalStore` class with `init(dir)`, `createManifest`, `getManifest`, `updateManifest`, `listManifests`, `removeManifest` (moves to trash)
-- `registerArtifact(manifestId, {path | content, title, type, mime, producer})` computes sha256, copies body to `artifacts/<hash>`, appends to manifest
-- Atomic writes (write temp, rename)
-- **Accept:** round-trip tests pass; a manifest created, updated, then read from disk with `JSON.parse` matches
+### T03. File storage
+- **Done:** M2. `internal/store`: `Open(dir)` creates the layout (`manifests/`, `artifacts/`, `sessions/`, `queue/`, `trash/`, `logs/`, a `config.json` of `{"version":"0.1"}` that is never overwritten), then `Create`, `Get`, `List` (bad files come back as errors beside the valid manifests), `Update(id, expectedRev, fn, op)`, `Remove` (moves the file to `trash/<id>.<timestamp>.json`, nothing is deleted) and `Resolve` (a unique id prefix of 8 or more characters). `coal init` is `store.Open`
+- `Update` is a compare-and-swap on `rev`: it re-reads under the lock, returns a `ConflictError` naming the expected and current rev when they differ (0 skips the check), and writes with `rev` incremented and `updatedAt` set. Every write is validated against the schema first, then written to a temp file in the same directory, fsynced and renamed, under a per-manifest flock at `manifests/.<id>.lock`, so several processes can write safely
+- `RegisterArtifact(manifestID, ArtifactInput{Path | Content, URI, Title, Type, MIME, Producer}, op)` hashes the body with SHA-256, copies it to `artifacts/<hex>` once, and records `sha256:<hex>`. Identity is `(manifest, uri)`, compared through `CanonicalURI`, so a second body for the same uri appends to `versions[]` and the top-level `hash`, `size`, `createdAt` and `producer` mirror the latest version; without a uri the identity is the hash (design rule 3, ADR-019). Type and MIME are guessed from the extension and the body when not given
+- Secrets are never copied: a file name on the deny list (`.env`, `*.pem`, `id_rsa*`, `*credentials*` and the rest), a body matching a token rule (`sk-` keys, Slack, GitHub, GitLab, npm, PyPI and AWS tokens, JWTs, netrc passwords, private keys), a path under `~/.ssh`, `~/.aws`, `~/.claude` and other credential directories, or a body over 5 MiB is recorded with `skipped` set and a salted blind hash in place of the real one, so the manifest carries no fingerprint of the secret
+- Known bug: `sensitiveLocation` compares against an unresolved home directory, its `/proc` check is Linux-only, and macOS Library paths are missing (#24)
+- **Accept:** `go test ./internal/store/...` passes: `TestRoundTrip` (a manifest created, updated, then read from disk with `json.Unmarshal` deep-equals the returned value, at rev 2), `TestStaleRevConflicts`, `TestParallelRegister`, `TestSameURIVersions`, `TestSecretsSkipped`, `TestListAndRemove`. On macOS `TestSymlinksAndSensitiveDirs` fails until #24 is fixed
 
-### T04. FTS index (diamond)
-- SQLite via `better-sqlite3`; FTS5 virtual table over summary, goal, tags, artifact titles, nextStep
-- `reindex()` drops and rebuilds from `manifests/`
-- `search(query, {status?, limit?})` returns ranked ids with snippets
-- Index updated on every store write
-- **Accept:** test seeds 10,000 synthetic manifests, `search` returns in under 100 ms; deleting `index.db` and running `reindex()` restores identical results
+### T04. FTS index
+- **Done:** M3. `internal/index` on `modernc.org/sqlite` (pure Go, no cgo), opened in WAL mode with a busy timeout so several processes can share `index.db`. A `docs` table carries the listing columns and an FTS5 virtual table covers summary, goal, tags, artifact titles, nextStep and the state summary, with the `porter unicode61` tokenizer, so `budgets` matches "budget tracker"
+- `Search(q, SearchOpts{Status, Limit})` turns user text into a safe FTS5 query (each term quoted and ANDed, the last one a prefix), ranks with bm25 column weights (summary highest), puts `source: user` first on ties, and returns id, summary, status, times, artifact count, nextStep, an HTML-escaped snippet in which `<b>` is the only markup, and the matched columns. The default limit is 20, the cap 200; an empty query lists manifests newest activity first
+- `Rebuild(ms)` clears and refills the index in one transaction from the manifests alone. `coal reindex` calls it through `internal/app`, which lists `manifests/`, logs files that do not parse and prints `indexed <n> manifests, skipped <m> as corrupt`. `app.Open` rebuilds an empty index on the spot and renames a corrupt `index.db` to `index.db.broken.<ts>` before starting a fresh one; a schema version change drops and recreates the tables
+- Every writer goes through `internal/app`, so `Create`, `Update`, `RegisterArtifact` and `Remove` update the index after the store write, under a shared flock on `.index.lock` that a rebuild takes exclusively. An index error after a successful store write is logged, never returned: the JSON files are the truth
+- **Accept:** `go test ./internal/index/...` passes: `TestSearchTenThousand` seeds 10,000 synthetic manifests and fails any search over 100 ms (skipped under `-short` and `-race`; the POC log records about 14 ms), `TestRebuildMatchesIncremental` (deleting `index.db` and rebuilding gives results identical to incremental upserts), `TestCorruptFileSetAside`, `TestConcurrentOpen`. In `cmd/coal`, `TestFindReindex` deletes `index.db`, sees `coal find` rebuild it, and sees `coal reindex` skip a corrupt file
 
 ## Week 2: Interfaces
 
 ### T05. CLI
-- Commands per `docs/02-SPEC.md` F3
-- `coal find` prints a table (use `cli-table3` or plain padding)
-- `coal open` uses `open` / `xdg-open` / `start` by platform
-- **Accept:** `coal init && coal add --intent "test" --artifact ./README.md && coal find test` prints the manifest; `coal open <id>` opens README
+- **Done:** M3 and M9. The commands in `docs/02-SPEC.md` F3, all in `cmd/coal` on cobra: `init`, `version`, `validate`, `add --intent [--goal] [--status] [--tag]... [--artifact]...`, `show`, `rm`, `find`, `reindex`, `open`, `rename`, `log`, `purge`, `stats`, `new`, `import claude-code`, plus `serve`, `mcp`, `hook`, `queue drain`, `adapter` and `resume`, which T06 to T09 and T11 describe. Every `<id>` argument takes a unique prefix of 8 or more characters, and an ambiguous prefix lists the candidates
+- `coal find [query...] [--status s] [--limit n] [--json]` prints a padded table with plain `strings.Repeat` padding: the shortest unique id prefix (at least 8 characters, because UUIDv7 ids from one minute share their first 8), the summary cut to 60 characters, status, relative time such as `1h ago`, and the artifact count, with the snippet on an indented line under each row. On a TTY the snippet's `<b>` becomes bold; elsewhere it is dropped. `--json` prints the rows in the API shape. Control and format characters are stripped, so stored text cannot drive the terminal
+- `coal open <id> [--artifact n]` copies the body to `tmp/<hex8>-<title>` in the data directory, with an extension taken from the MIME type when the title has none and `.txt` for anything that could run, then starts `open` on macOS, `cmd /c start` on Windows and `xdg-open` elsewhere. Viewers never get the content-addressed original, and a fresh copy is made each time
+- `coal add` records the manifest with `source: user` and registers each `--artifact` path, printing a note when a body is not copied; `coal rm` prints the trash path. Errors are one line each and cobra usage is silenced
+- **Accept:** `cmd/coal` tests pass: `TestAddShowRm` (`add --intent ... --artifact budget.html`, `show` by an 8-character prefix, `rm` to `trash/`), `TestFindReindex`, `TestPrintResults`, `TestOpen` (opens a fresh copy with the platform opener stubbed, refuses an artifact with no stored body), `TestOpenCommand`; demo step 4, `coal find budget`, passed on macOS on 2026-11-07. The hand sequence in `docs/poc/DEMO.md` is `coal init`, `coal add --intent "..." --artifact README.md`, `coal find budget`, `coal show <id>`, `coal open <id>`
 
 ### T06. MCP server (`coal mcp`)
-- `@modelcontextprotocol/sdk` server on stdio exposing the six tools and one resource in F4, as a subcommand of the `coal` binary
-- Tool descriptions written for a model reader: say when to call each
-- `coal mcp` in CLI launches it
-- **Accept:** MCP Inspector lists all tools; `coal_find` returns the T05 manifest; `coal_read_artifact` returns README text
+- **Done:** M5. `internal/mcpserver` on the official Go SDK (`github.com/modelcontextprotocol/go-sdk` v1.8.0) over stdio, as the `coal mcp` subcommand.
+- Six tools, `coal_find`, `coal_get`, `coal_read_artifact`, `coal_record_intent`, `coal_register_artifact`, `coal_update_state`, and the `coal://manifests/active` resource, per F4. `coal_update_state` returns a tool error with the current `rev` and state on a stale `rev`
+- Tool descriptions written for a model reader: say when to call each; `coal_find` tells the model to try two or three phrasings and to read `coal://manifests/active` first
+- Logs to `logs/mcp.log`; `coal_find` calls are counted by client tool in `logs/metrics.jsonl`
+- **Accept:** `go test ./internal/mcpserver/...` passes (an in-process client lists tools, calls `coal_find`, reads the artifact, sees a conflict on a stale `rev`); `scripts/mcp-smoke.sh` pipes initialize, tools/list and `coal_find` into `coal mcp` and gets the manifest back; demo step 2 passes
 
 ### T07. Daemon (`coal serve`)
-- Fastify on 127.0.0.1:4242, routes per F2, as a subcommand of the `coal` binary
-- Serves `packages/coal/web/dist` at `/`
-- `GET /artifacts/:hash` sets `Content-Type` from stored mime and `Content-Security-Policy: sandbox`
-- **Accept:** `curl localhost:4242/health` returns `{ok:true}`; all routes covered by supertest-style tests
+- **Done:** M4. `internal/daemon` on `net/http`, `coal serve [--port 4242]`, bound to `127.0.0.1` only (a test asserts the listener address), routes per F2, as a subcommand of the `coal` binary.
+- Serves the UI embedded from `web/dist` by `web/embed.go` at `/`, or a page saying the web UI is not built when `make web` has not run
+- `GET /api/artifacts/{hex}` sets `Content-Type` from the stored mime and `Content-Security-Policy: sandbox`; `PATCH /api/manifests/{id}` honours `If-Match` for `rev` (412 with the current manifest on a stale rev); a Host guard accepts only `127.0.0.1` and `localhost`, and an Origin guard refuses writes whose `Origin` is not the daemon's own
+- Logs to `logs/daemon.log`, rotating at 10 MB; every two seconds the tick drains the capture queue, runs any queued summarize jobs and commits pending history
+- Known bug: the artifact MIME comes from the host mime.types, so `.md` is `text/plain` on macOS (#22)
+- **Accept:** `curl 127.0.0.1:4242/health` returns ok; `go test ./internal/daemon/...` covers the routes with `httptest` (its artifact test fails on macOS until #22 is fixed)
 
 ## Week 3: Capture
 
 ### T08. Claude Code adapter (`coal adapter install claude-code`)
-- Internal capture contract per ADR-011; the Claude Code adapter translates hook payloads into it
-- Hooks: `SessionStart`, `PostToolUse`, `Stop`, `SessionEnd`, behaving exactly as F5
-- `coal adapter install claude-code` merges hook config into `~/.claude/settings.json` without clobbering existing hooks; `uninstall` reverses it
-- Lazy manifest creation writes `contexts[]` and the `.coal` marker (ADR-013); a second session in the same directory attaches, never creates
-- `SessionEnd` only queues; the queue worker fills `state.summary` as F5 says
-- **Accept:** definition-of-done step 1 passes; a second session in the demo directory adds to the same manifest; `SessionEnd` returns in under 500 ms on a cold disk
+- **Done:** M6a and M6b. The capture contract is `internal/capture.Event` (ADR-011), one JSON file per event with the kinds `sessionStart`, `prompt`, `fileWritten`, `turnEnd` and `sessionEnd`; `capture.FromClaudeCode` translates a Claude Code hook payload into one, and `sessionRef` is `claude-code:session:<session_id>`. Recorded payloads for a full session live in `testdata/claude-code/`
+- `coal adapter install claude-code --settings <file>` writes five hooks into that settings file: `SessionStart`, `UserPromptSubmit`, `PostToolUse` (matcher `Write|Edit|MultiEdit|NotebookEdit`), `Stop` and `SessionEnd` (timeout 5), each running `COAL_HOME=<dir> <coal> hook <event>`. The `--settings` flag is required, so COAL never edits `~/.claude/` on its own. Other settings and hooks are kept, install is idempotent, a moved binary's entries are replaced instead of added, the settings from before COAL are kept once as `<file>.bak`, and `uninstall` restores the file
+- `coal hook <event>` reads the payload (capped at 16 MiB), queues it as `queue/<uuidv7>.json` (`internal/queue`), then drains the queue under `queue/.lock`. `SessionEnd` only queues and returns; the daemon tick, the next `SessionStart` or `coal queue drain` folds it (F5, ADR-016). `SessionStart` waits at most one second for the lock. Every hook recovers panics, logs to `logs/coal.log` and exits 0, so a session is never failed, and hooks open the store with deferred history so no hook runs git (ADR-014)
+- `internal/fold` is the single writer. The first prompt that passes the summary filter (`capture.PickSummary`: no slash commands, no injected wrapper tags, at least four words, not a "continue" reply, not mostly code) becomes `intent.summary` with `source: user`, cut to 200 characters; otherwise the manifest gets `Work in <dir>` with `source: model`, and any later passing prompt from any session upgrades it. The first captured file write creates the manifest lazily with `contexts[]` (the project root as a `path`, the origin remote as a `repo`), writes the `.coal` marker and adds `.coal` to `.git/info/exclude` (ADR-013), unless `config.json` sets `markers: "none"`. Only files with a `captureExtensions` extension (default `.html`, `.md`, `.py`, `.ts`, `.tsx`) inside the project root are captured, never anything in `~`, above it or under `.git`; each write registers a version through the store. `Stop` only bumps `state.lastActivityAt`
+- A second session in the same project attaches through `marker.Match` (nearest `.coal` marker naming an active or paused manifest, then the longest matching `path` context, then the `repo` remote) and never creates. When the `sessionEnd` event is folded, `state.summary` and `nextStep` come from the transcript or the last assistant message unless the `ext["io.coalmine.state"]` stamp shows the model recorded state through `coal_update_state` since the session started; with `config.summarizer` set a summarize job is queued for the daemon or `coal queue drain`. Sessions with no end for 12 hours are closed out at the next `SessionStart`. Capture records `manifest_created`, `session_attached`, `resume_shown` and `resume_acted` in `logs/metrics.jsonl`
+- Known bugs: a chat-only later session overwrites the model-recorded `state.summary` (#20); `session_attached` and `resume_acted` count only a session that writes a file (#21); `intent.summary` is a hard 200-character cut on a word boundary (#28)
+- **Accept:** definition-of-done step 1 passes in the demo and passed in the live Claude Code 2.1.312 session on 2026-11-07. `go test ./internal/fold/... ./internal/queue/... ./internal/capture/... ./internal/marker/...` passes; `internal/fold` `TestRecordedSession` folds the recorded payloads into one manifest with `source: user`, one `budget.html` artifact, contexts and the marker, gets three versions after two more edits, and attaches a second session from a subdirectory without creating; `cmd/coal` `TestHookSession` runs every hook as `coal hook` in under 500 ms (the target is 200 ms and the demo logs 12 to 50 ms), `TestSessionEndOnlyQueues` shows `session-end` returning within that budget with the lock held by another process and opening no store, and `TestAdapterRoundTrip` installs twice, moves the binary and uninstalls back to the original settings
 
 ### T09. Resume (headline feature)
-- `SessionStart` matching per F5.1, with the tests listed there
-- Banner via `systemMessage`; verify how the current Claude Code build displays it and adjust
-- `additionalContext` carrying summary, nextStep, openQuestions, artifacts, and the open-by-offering-to-continue instruction
-- `coal resume`: finds the manifest, launches `claude` with a first prompt supplied, so the first turn is the resume
-- **Accept:** definition-of-done step 3 passes in both forms: plain `claude` shows the banner before the user types and the first reply offers to continue; `coal resume` opens with the resume as the first turn
+- **Done:** M6 and M11. `coal hook session-start` first folds what is queued, including the previous session's `sessionEnd`, waiting at most one second for the lock, then finds the manifest for the session: the one its scratch file already names, or `marker.Match` on the working directory per F5.1 (nearest `.coal` marker naming an active or paused manifest, then the longest `path` context the resolved cwd is under, then a `repo` context equal to the origin remote; ties go to the most recently active; a path at or above the home directory never matches)
+- The hook prints JSON with `systemMessage` and `hookSpecificOutput.additionalContext` (`capture.ResumeOutput`). The banner is `COAL: <summary>. Next: <nextStep>. <n> open question(s).`, with the next step and the count left out when empty, and a `coal rename <id> "..." to fix the summary.` hint when the summary is model-written. The context, at most 4000 characters, carries the manifest id, intent, goal, where it stands, the next step, up to five open questions, the artifacts with their URIs, the instruction to open the first reply by offering in one sentence to continue from the next step, and a note to call `coal_update_state` when a piece of work is done. Showing it records `resume_shown`. Claude Code 2.1.312 displays the `systemMessage` in the terminal before the user types, verified on 2026-11-07
+- `coal resume [--tool claude-code] [--print]` matches the manifest the same way, then replaces itself with `claude "<prompt>"`, where the prompt is one line under 1500 characters: `Resume my work on: <intent>. Last time we left off at: <nextStep>. Open questions: <...>. Start by telling me in one sentence where I left off and ask whether to continue.` It passes no permission or model flags, exits 1 with `No COAL record for this directory` when nothing matches, exits 2 on an unknown tool, and records `resume_launch`. `--print` shows the command without running it (ADR-016)
+- Known bug: `resume_shown` counts every SessionStart source, while `resume_acted` counts only a session that writes a file into the matched manifest, so the acted-over-shown ratio in `coal stats` reads 0% (#21)
+- **Accept:** definition-of-done step 3 passed in both forms in the live run on 2026-11-07: plain `claude` showed the banner before the user typed and the first reply offered to continue; `coal resume` started a session whose first turn was the resume. Deterministically, `internal/capture` `TestResumeOutput` and `TestBannerPunctuation`, `internal/marker` `TestMatch`, `TestMatchRepoClones` and `TestHomeAndAboveNeverAnchor`, and `cmd/coal` `TestHookSession` (the exact banner `COAL: Build me a household budget tracker as a single HTML page. Next: add CSV export.`), `TestResumePrompt`, `TestResumePrintAndNoMatch` and `TestResumeExecsClaude` pass, and demo steps 3a and 3b pass with a stand-in `claude` on `PATH`
 
 ## Week 4: Web UI
 
 ### T10. Web UI
-- Vite + React, no router needed
-- Left: search box, results list (summary, status pill, relative time, artifact count)
-- Right: manifest detail, artifact tabs, HTML in sandboxed iframe, code in `<pre>`
-- Keyboard: `/` focuses search, arrows move selection, enter opens
-- **Accept:** definition-of-done step 4 works; Lighthouse accessibility 90+
+- **Done:** M7. `web/`: a Svelte 5 app on `@davenicoll/web-framework`, built with Bun (`make web`) and embedded in the binary by `web/embed.go` with `go:embed`. No router.
+- Left: search box, results list (summary, status badge, relative time, artifact count)
+- Right: manifest detail, artifact tabs, HTML in a sandboxed iframe, code in `<pre>`, a validity badge from an Ajv validator generated at build time from `spec/intent-manifest.schema.json` (`web/scripts/gen-validator.ts`)
+- Keyboard: `/` focuses search, arrows move selection, Enter opens (`web/src/App.svelte`)
+- Known bug: `@davenicoll/web-framework` is an unpublished sibling checkout at `../web-framework`, so `make web` fails from a fresh clone and the daemon serves a "web UI is not built" page at `/` (#26). The framework must be vendored or published before a release
+- **Accept:** definition-of-done step 5 works where the UI builds: Vitest and `svelte-check` clean, `make e2e` drives the embedded UI in headless Chromium with no console errors and no CSP violations, and `coal serve` shows the manifest with the HTML preview
 
 ## Week 5: Hardening
 
 ### T11. Error handling, logging, history
-- `~/.coal/` becomes a git repo on `coal init` if `git` is on PATH (ADR-014); the daemon commits debounced, never from a hook; `coal log <id>` shows a manifest's history
-- Every CLI and MCP error is a one-line human message plus `--verbose` stack
-- Daemon logs rotate
-- Corrupt manifest file is skipped with a warning, not fatal
-- **Accept:** fuzz test writes garbage into `manifests/`, daemon still starts and serves the rest
+- **Done:** M11 history, M9 and the M4 log rotation. The data directory becomes a git repo when the store opens (`coal init`) if `git` is on PATH (ADR-014); hooks run no git and only touch `.history-pending`, the daemon tick commits `manifests/` in a batch under `.git.lock` after two quiet seconds, and a non-hook command commits what is pending when it opens the store; `coal log <id> [--patch]` shows a manifest's history
+- Every CLI and MCP error is a one-line human message; cobra usage is silenced on errors. Every `coal hook` recovers panics and exits 0 so a session is never failed
+- `logs/daemon.log` rotates at 10 MB; `logs/mcp.log` and `logs/coal.log` hold the MCP server and hook lines
+- A manifest file that does not parse is returned as an error and skipped by `store.List`, not fatal; a corrupt `index.db` is renamed `index.db.broken.<ts>` and rebuilt
+- **Accept:** `internal/store` test writes `{bad` into `manifests/` and `List` returns the valid manifests plus one error; `coal reindex` on that directory indexes the rest
+
+### T12b. Publish the schema at its id
+- **Done:** `site/build.sh` assembles coalmine.io into `_site/` and copies `spec/intent-manifest.schema.json` byte for byte to `schema/intent-manifest/0.1.json`; `.github/workflows/pages.yml` builds and deploys it to GitHub Pages on every push to `main` that touches `site/**`, `assets/icon-*.png`, the schema or the workflow, and fails the build if `cmp` finds a difference. The schema served at the `$id` matched `spec/` on 2026-11-07, with the ADR-019 fields.
+- **Open:** coalmine.app does not yet resolve; the redirect to coalmine.io is a DNS step for the owner, nothing in the repo
+- **Accept:** `curl https://coalmine.io/schema/intent-manifest/0.1.json` returns the committed schema byte for byte
+
+## Left
 
 ### T12. Install path
-- `npm i -g @coal/coal` works from a tarball (`pnpm pack`)
-- `coal init` prints next steps: install adapter, add MCP server to Claude Desktop / Cursor config (print the exact JSON)
-- README quickstart updated and tested on a clean VM or container
-- **Accept:** a second person follows README only and completes the definition-of-done demo
+- Today there is no release and no install path. `coal` builds from source: `make GO=/path/to/go build` produces `.sandbox/bin/coal`. Prerequisites: Go 1.27 and git; the demo scripts need GNU bash 4+ and GNU coreutils (#25); the web UI needs Bun and the unpublished `@davenicoll/web-framework` sibling checkout (#26)
+- Decide how the Go binary is installed. No npm. Options: a GitHub release with prebuilt binaries, `go install github.com/calebtonn/coal/cmd/coal@latest`, or a Homebrew formula. Record the choice as an ADR
+- `coal init` prints next steps: install the adapter (`coal adapter install claude-code --settings <file>`), add the MCP server to Claude Desktop or Cursor config (print the exact JSON, as `docs/poc/DEMO.md` shows). Today it prints only the data directory path
+- Write a README quickstart and test it on a clean VM or container
+- **Accept:** a second person follows the README only and completes the definition-of-done demo
 
 ## Week 6: Demo and decision
 
-### T12b. Publish the schema at its id
-- Static site from the repo (`site/`, deployed to GitHub Pages by `.github/workflows/pages.yml`) serving the schema at its `$id`
-- coalmine.app redirects to coalmine.io (a DNS step for the owner, nothing in the repo)
-- **Accept:** `curl https://coalmine.io/schema/intent-manifest/0.1.json` returns the committed schema byte for byte
-
 ### T13. Demo script and recording
-- Write `docs/DEMO.md`: exact steps, exact prompts
-- Record a 3 minute screen capture of the end-to-end demo
-- **Accept:** recording exists; demo works twice in a row from a fresh `~/.coal`
+- **Done:** `scripts/demo.sh` and `docs/poc/DEMO.md` (M8). `scripts/demo.sh`, also `make demo`, builds the UI and the binary (`SKIP_BUILD=1` skips that), creates a fresh `.sandbox/demo-<timestamp>/` with a data directory and a `projects/budget` project, and walks the five definition-of-done steps with a PASS or FAIL line each: replay of the recorded session through `coal hook`, `coal_find` and `coal_read_artifact` over `coal mcp`, the SessionStart banner and context (3a), `coal resume` with a stand-in `claude` on `PATH` (3b), `coal find budget`, and the daemon's health, search API, UI and sandboxed artifact headers. It then prints the hook timings and `coal stats` and exits non-zero on any FAIL. The scripts refuse a `COAL_HOME` or `PROJECT` outside `.sandbox/` unless `COAL_ALLOW_OUTSIDE_SANDBOX=1`
+- `docs/poc/DEMO.md` has the exact commands, what each step proves, the hand sequence, the MCP client JSON for Claude Desktop or Cursor, the live Claude Code run with its exact prompt (done on macOS on 2026-11-07 with Claude Code 2.1.312) and the opt-in summarizer. The file lives under `docs/poc/`, not at `docs/DEMO.md`
+- Where it stands: on `poc/go` the demo passed twice in a row on 2026-11-05 (`docs/poc/STATUS.md`). From a fresh clone on macOS on 2026-11-07, steps 1, 2, 3a, 3b and 4 passed with GNU bash 4+ and coreutils on `PATH` and step 5 failed only on the UI check, because the web framework is unpublished (#26); DEMO.md lists no prerequisites yet (#25)
+- Left: no recording exists. Record the 3 minute screen capture once #25 and #26 are fixed, so the demo runs on a clean machine
+- **Accept:** recording exists; `scripts/demo.sh` passes all five steps twice in a row from a fresh sandbox on a machine other than the author's
 
 ### T14. Decision gate
+- Not started. Before the gate week begins, fix these nine open bugs, one issue and one pull request to `main` each: #20 a chat-only later session overwrites the model-recorded `state.summary`; #21 `session_attached` and `resume_acted` count only file writes and `resume_shown` counts every SessionStart source, so the two gate ratios read 0%; #22 artifact MIME comes from the host mime.types (`.md` is `text/plain` on macOS, `.ts` is `video/mp2t`); #23 the importer resolves symlinks too late, so projects under `/tmp` or `/var` on macOS lose artifacts on import; #24 `sensitiveLocation` compares against an unresolved home, the `/proc` test is Linux-only, and macOS Library paths are missing; #25 the Makefile hardcodes `~/.local/go`, the scripts need GNU bash 4.1+ and coreutils, and DEMO.md lists no prerequisites; #26 the web UI depends on the unpublished `@davenicoll/web-framework`; #27 the `.coal` marker `$schema` URL returns 404; #28 `intent.summary` is a hard 200-character word cut
 - Use COAL for real for one week. Every day, log: did it capture what I built, did I find things by intent, did it get in the way
-- Write `docs/RETRO.md` with the answers and a recommendation: continue to Phase 2, pivot, or stop. The retro reads `coal stats --days 7` alongside the daily notes. Today `coal stats` counts `coal_find` calls by client tool, resume lines shown, resume lines acted on, sessions attached, manifests created, renames, purges and `coal resume` launches, and prints two ratios: acted on over shown, and attached over attached plus created. The acted and attached counters are being corrected: today they only count a session that writes a file into the matched manifest. A suggested bar: resume is acted on more often than it is ignored, and there is fewer than one manual merge per ten sessions
-- **Accept:** retro written; decision made
+- Write `docs/RETRO.md` with the answers and a recommendation: continue to Phase 2, pivot, or stop. The retro reads `coal stats --days 7` alongside the daily notes. `coal stats` counts `coal_find` calls by client tool, resume lines shown, resume lines acted on, sessions attached, manifests created, renames, purges and `coal resume` launches, and prints two ratios: acted on over shown, and attached over attached plus created. Until #21 is fixed, acted and attached count only a session that writes a file into the matched manifest, and shown counts every SessionStart source, so both ratios read 0%. A suggested bar: resume is acted on more often than it is ignored, and there is fewer than one manual merge per ten sessions
+- Schema 0.1 stays Draft until the retro and freezes there (ADR-019)
+- **Accept:** the nine issues are closed; retro written; decision made
 
 ## Deferred (explicitly not now)
 
@@ -134,4 +150,4 @@ Estimated total: six weeks of nights and weekends, or two weeks full time.
 - Embedding-based search
 - Policy engine, interrupt gating, Slack and calendar signals
 - Sync, encryption, accounts, teams
-- Published npm packages under a real org
+- A public Go package API outside `internal/`; a package is split out only when a second implementer needs one piece alone (ADR-018)

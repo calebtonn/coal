@@ -1,8 +1,8 @@
 # COAL proof of concept: plan
 
-Status: in progress. Branch `poc/go`, local only. Started 2026-11-04.
+Status: done and merged. Started 2026-11-04 on `poc/go`; every milestone M0 to M11 landed there (`STATUS.md` has the log). On 2026-11-07 PR 29 merged the branch, through `adopt-go`, into `main` as `1ffd071`, with ADR-018 (this stack and layout, superseding ADR-005) and ADR-019 (the schema changes below, accepted into 0.1). `poc/go` is history and gets no more commits; work now goes through GitHub issues and pull requests to `main` (`CONTRIBUTING.md`). The same day the code was built from a fresh clone on macOS: build and `go vet` clean, three Go test packages failing on macOS (#22, #23, #24), demo steps 1 to 4 passing with GNU bash 4 and coreutils, step 5 failing only on the UI check (#26), and one live Claude Code session captured through the hooks, recorded over MCP and resumed both ways. The bugs found are issues #20 to #28, one PR to `main` each; none is fixed yet. There is no release; `coal` builds from source with `make GO=/path/to/go build`. The rest of this file is the plan as it was followed, kept as written, with dated notes where `main` differs.
 
-This plan follows the build recommendation in the spec review of commit `4f6da29` (section 6, first choice: a Go core with the web UI embedded). Dave chose that stack, so for this POC it replaces the "Stack (fixed for MVP)" section of `CLAUDE.md`. Every other rule in `CLAUDE.md` still holds: 127.0.0.1 only, never delete user data, no telemetry or network calls, UUIDv7 ids, ISO 8601 UTC, plain prose.
+This plan follows the build recommendation in the spec review of commit `4f6da29` (section 6, first choice: a Go core with the web UI embedded). Dave chose that stack; during the proof of concept it replaced the "Stack (fixed for MVP)" section of `CLAUDE.md`, and since ADR-018 (2026-11-07) that section of `CLAUDE.md` describes this stack. Every other rule in `CLAUDE.md` still holds: 127.0.0.1 only, never delete user data, no telemetry or network calls, UUIDv7 ids, ISO 8601 UTC, plain prose.
 
 Progress lives in `STATUS.md` next to this file.
 
@@ -20,7 +20,7 @@ One working end-to-end demo, all local and sandboxed:
 
 | Part | Choice |
 |---|---|
-| Language | Go 1.27 (installed under `~/.local/go`), one module at the repo root, one binary `coal` |
+| Language | Go 1.27 (the Makefile looks under `~/.local/go`; pass `GO=/path/to/go` elsewhere, #25), one module at the repo root, one binary `coal` |
 | CLI | `github.com/spf13/cobra` |
 | Daemon | `net/http`, bound to `127.0.0.1:4242` |
 | MCP | `github.com/modelcontextprotocol/go-sdk`, stdio transport |
@@ -71,6 +71,8 @@ $COAL_HOME/
 
 ## Design decisions fixed for the POC
 
+These are the decisions as made on 2026-11-04. Where the implementation on `main` departed from them (SessionEnd only queues, commits are deferred out of hooks per ADR-014, the banner reads `COAL: <summary>. Next: <nextStep>. <n> open questions.`, and `coal new` exists), M11 below and `STATUS.md` record the change; the code is the reference.
+
 **Schema changes.** v0.1 is unpublished, so these change the schema without a version bump:
 
 - `rev` (integer, optional, starts at 1) on the manifest. Every write increments it. Writers can pass the `rev` they read and get a conflict if it moved (#6).
@@ -100,7 +102,7 @@ $COAL_HOME/
 
 **Matching** (#4, ADR-013). In order: a `.coal` marker at or above cwd (nearest wins); a `path` context where `realpath(cwd)` equals the key or starts with `key + "/"` (longest key wins); a `repo` context whose key equals cwd's normalized origin remote. Only `active` and `paused` manifests match. Tests cover subdirectory, sibling with a shared prefix, home directory and two clones of one remote.
 
-**Marker.** `.coal` at the git top level (or cwd without a repo) holds `{"$schema": "https://coalmine.io/schema/coal-marker/0.1.json", "manifest": "<id>"}`. COAL adds `.coal` to that repo's `.git/info/exclude` when it creates the marker. `coal new` is out of scope for the POC.
+**Marker.** `.coal` at the git top level (or cwd without a repo) holds `{"$schema": "https://coalmine.io/schema/coal-marker/0.1.json", "manifest": "<id>"}`. COAL adds `.coal` to that repo's `.git/info/exclude` when it creates the marker. `coal new` was out of scope until M11 added it (see below).
 
 **Resume output** (#3). The `SessionStart` hook prints JSON with `systemMessage` (`COAL: You left off at "Add CSV export". 1 open question. Manifest 019a...`) and `hookSpecificOutput.additionalContext` carrying the summary, next step, open questions, artifact list and one instruction: open the first reply by offering to continue from the next step, and record progress with `coal_update_state` when work finishes.
 
@@ -251,14 +253,16 @@ Where the POC goes further than main and keeps it: the single-writer queue for e
 | #14 Second writer | Docs done |
 | #15 coal_find retries, porter | Porter and prefix in M3; description in M5 |
 
-GitHub issues stay open. Nothing is closed or commented on from this project.
+GitHub issues stayed open while the work was on `poc/go`; nothing was closed or commented on from the branch. Since the merge (PR 29, 2026-11-07), #5, #6 and #7 are closed as resolved by ADR-019.
 
 ### Stretch, only after M10
 
 - A Cursor or Codex adapter on the capture contract (ADR-011)
-- An opt-in model summarizer over the transcript (#2)
+- An opt-in model summarizer over the transcript (#2). Done in M11 as `config.summarizer`.
 
-## Working rules
+## Working rules (proof of concept, 2026-11-04 to 2026-11-07)
+
+These rules applied while the work was on `poc/go`. Since the merge, nothing is committed to that branch; work goes through GitHub issues and pull requests to `main`, and `CONTRIBUTING.md` has the current rules.
 
 - Builders run on Claude Opus 5.5 and get one milestone each with this plan and the relevant docs as the brief. Design, review and merges stay with the lead on Fable 5.1.
 - Review gate (Dave, 2026-11-04): once there is a decent end-to-end build (M6 capture working with M3 to M5), a Fable 5.1 reviewer that did not write the code cross-checks the diff from `main`. Confirmed findings are fixed before the build is called done, and again before M8 is signed off. `poc/go` stays local; there is no push.

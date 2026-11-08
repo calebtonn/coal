@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>COAL: a record of your work that you own and any AI tool can read</title>
-<meta name="description" content="COAL will keep a record of what you build with AI tools: what you meant, what got made, and what comes next. Open source and local first. Pre-alpha: a proof of concept runs the demo, and the first release is being built in the open.">
+<meta name="description" content="COAL will keep a record of what you build with AI tools: what you meant, what got made, and what comes next. Open source and local first. Pre-alpha: the Go implementation builds from source and runs the demo, and the first release is being built in the open.">
 <meta name="theme-color" content="#bfe1ea">
 <link rel="canonical" href="https://coalmine.io/">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
@@ -523,7 +523,7 @@ footer .right { margin-left: auto; }
           <a class="btn primary" href="#level-1">Enter the mine <svg aria-hidden="true"><use href="#i-down"/></svg></a>
           <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/docs/02-SPEC.md"><svg aria-hidden="true"><use href="#i-github"/></svg>Read the spec</a>
         </div>
-        <p class="note">We are building it in the open. The implementation runs the demo from a recorded Claude Code session, from capture to the resume line, and has been run against one live session. There is nothing to install yet. The first release captures from Claude Code only, and anything else you add by hand.</p>
+        <p class="note">We are building it in the open. The implementation is written in Go and builds from source; there is no release yet. It runs the demo from a recorded Claude Code session, from capture to the resume line, and has been run against one live session. The first release captures from Claude Code only, and anything else you add by hand.</p>
       </div>
       <div class="headframe-wrap" aria-hidden="true">
         <svg class="headframe" viewBox="0 0 320 300" role="presentation">
@@ -687,8 +687,8 @@ footer .right { margin-left: auto; }
           <figure class="window" aria-label="Mockup of a terminal: coal find budget lists the budget tracker record">
             <div class="bar"><span class="dots"><i></i><i></i><i></i></span>terminal<span class="tag">Mockup</span></div>
 <pre tabindex="0"><span class="t-dim">$</span> coal find <span class="t-str">"budget"</span>
-<span class="t-dim">ID        SUMMARY            STATUS  LAST   ARTIFACTS</span>
-<span class="t-gem">019a3f2c</span>  Household budget…  <span class="t-amb">active</span>  1 Nov  1</pre>
+<span class="t-gem">019a3f2c</span>  Household budget tracker as a single HTML page  <span class="t-amb">active</span>  6d ago  1 artifact
+          <span class="t-dim">Household <b>budget</b> tracker as a single HTML page</span></pre>
           </figure>
         </div>
         <figure class="window reveal" aria-label="Mockup of a chat in an MCP client: asked for the budget thing, the tool calls coal_find and shows the record with its next step">
@@ -754,6 +754,7 @@ footer .right { margin-left: auto; }
   <span class="t-key">"$schema"</span><span class="t-pun">:</span> <span class="t-str">"https://coalmine.io/schema/intent-manifest/0.1.json"</span><span class="t-pun">,</span>
   <span class="t-key">"version"</span><span class="t-pun">:</span> <span class="t-str">"0.1"</span><span class="t-pun">,</span>
   <span class="t-key">"id"</span><span class="t-pun">:</span> <span class="t-str">"019a3f2c-8e4b-7d31-9a5c-2f6b1c8d4e70"</span><span class="t-pun">,</span>
+  <span class="t-key">"rev"</span><span class="t-pun">:</span> <span class="t-amb">3</span><span class="t-pun">,</span>
   <span class="t-key">"intent"</span><span class="t-pun">: {</span>
     <span class="t-key">"summary"</span><span class="t-pun">:</span> <span class="t-str">"Household budget tracker as a single HTML page"</span><span class="t-pun">,</span>
     <span class="t-key">"source"</span><span class="t-pun">:</span> <span class="t-str">"user"</span>
@@ -763,7 +764,8 @@ footer .right { margin-left: auto; }
     <span class="t-key">"hash"</span><span class="t-pun">:</span> <span class="t-str">"sha256:9f86d0…0a08"</span><span class="t-pun">,</span>
     <span class="t-key">"title"</span><span class="t-pun">:</span> <span class="t-str">"budget.html"</span><span class="t-pun">,</span>
     <span class="t-key">"type"</span><span class="t-pun">:</span> <span class="t-str">"html"</span><span class="t-pun">,</span>
-    <span class="t-key">"producer"</span><span class="t-pun">: {</span> <span class="t-key">"tool"</span><span class="t-pun">:</span> <span class="t-str">"claude-code"</span> <span class="t-pun">}</span>
+    <span class="t-key">"producer"</span><span class="t-pun">: {</span> <span class="t-key">"tool"</span><span class="t-pun">:</span> <span class="t-str">"claude-code"</span> <span class="t-pun">},</span>
+    <span class="t-key">"versions"</span><span class="t-pun">: [{</span> <span class="t-key">"hash"</span><span class="t-pun">:</span> <span class="t-str">"sha256:9f86d0…0a08"</span><span class="t-pun">,</span> <span class="t-key">"createdAt"</span><span class="t-pun">:</span> <span class="t-str">"2026-11-01T02:14:09Z"</span><span class="t-pun">,</span> <span class="t-key">"producer"</span><span class="t-pun">: {</span> <span class="t-key">"tool"</span><span class="t-pun">:</span> <span class="t-str">"claude-code"</span> <span class="t-pun">} }]</span>
   <span class="t-pun">}],</span>
   <span class="t-key">"state"</span><span class="t-pun">: {</span>
     <span class="t-key">"lastActivityAt"</span><span class="t-pun">:</span> <span class="t-str">"2026-11-01T02:41:33Z"</span><span class="t-pun">,</span>
@@ -776,7 +778,7 @@ footer .right { margin-left: auto; }
           </figure>
           <ul class="notes">
             <li class="panel reveal"><b>intent.source</b><span>Who wrote the summary: you or a model. Search ranks your own words first.</span></li>
-            <li class="panel reveal"><b>artifacts[].hash</b><span>SHA-256 of the copy in <code>~/.coal/artifacts/</code>. A version whose body was not copied (possible secret, too large, purged) keeps a salted blind hash and a skipped reason instead. The original path is kept too, but it can go stale.</span></li>
+            <li class="panel reveal"><b>artifacts[].hash</b><span>SHA-256 of the copy in <code>~/.coal/artifacts/</code>, matching the latest entry in <code>versions[]</code>, which keeps every version COAL recorded. A version whose body was not copied (possible secret, too large, purged) keeps a salted blind hash and a skipped reason instead. The original path is kept too, but it can go stale.</span></li>
             <li class="panel reveal"><b>state.nextStep</b><span>The line every resume starts from.</span></li>
             <li class="panel reveal"><b>contexts[]</b><span>Where this work lives. When a project has no <code>.coal</code> marker, SessionStart uses it to find the record.</span></li>
             <li class="panel reveal"><b>provenance</b><span>Which tool and model wrote the record. It never stores tokens or secrets.</span></li>
@@ -801,7 +803,7 @@ footer .right { margin-left: auto; }
             <li><b>Files are the truth.</b> Plain JSON is the record. The search index is SQLite and can be deleted and rebuilt from the files.</li>
             <li><b>Your words first.</b> The summary is what you typed. A model can suggest a better one, but it goes in a separate field unless you say yes.</li>
             <li><b>No telemetry.</b> No network calls you did not set up yourself. The daemon listens on 127.0.0.1 only.</li>
-            <li><b>Never deletes.</b> Remove means move to the trash folder. The one exception is <code>coal purge</code>, which deletes an artifact body that holds a secret after you confirm; the record stays. When git is installed, every CLI or MCP change to a record is a commit, and each session's capture is committed as a batch.</li>
+            <li><b>Never deletes.</b> Remove means move to the trash folder. The one exception is <code>coal purge</code>, which deletes an artifact body that holds a secret after you confirm; the record stays. When git is installed, every CLI or MCP change to a record is a commit, and the hooks' writes are committed in batches by the daemon or by the next <code>coal</code> command.</li>
             <li><b>Open, all of it.</b> Apache 2.0: the schema, the library, the CLI and every adapter. No paid tier.</li>
           </ol>
         </div>
@@ -831,11 +833,11 @@ footer .right { margin-left: auto; }
         <div class="sign reveal"><span class="bolt"></span>The seam<span class="depth">−1000 m</span><span class="bolt"></span></div>
         <div class="lump reveal"><img src="assets/icon-512.png" alt="The COAL logo: a lump of coal cracked open with a diamond inside" width="300" height="300" loading="lazy" decoding="async"></div>
         <h2 id="l9" class="reveal">We are building it. Come join us.</h2>
-        <p class="intro reveal">The proof of concept, written in Go by a collaborator, was adopted as the implementation (ADR-018) and merged. It runs the demo from a recorded Claude Code session and has been run against one live Claude Code session: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and <code>coal resume</code>. The web UI builds only with a package that is not published yet. Read the spec, look through the code, and open an issue for anything that is wrong or unclear.</p>
+        <p class="intro reveal">The implementation is written in Go. It began as a collaborator's proof of concept and was adopted as the Phase 1 implementation on 2026-11-07 (ADR-018). It builds from source with Go 1.27, runs the demo from a recorded Claude Code session, and has been run against one live Claude Code session: capture through the real hooks, find from the CLI and over MCP, the resume line at session start, and <code>coal resume</code>. There is no release yet, the web UI builds only with a package that is not published yet, and the bugs found so far are open issues. Read the spec, build it, and open an issue for anything that is wrong or unclear.</p>
         <p class="found-msg" id="found-msg" aria-live="polite">There are 9 diamonds in the walls on the way down.</p>
         <div class="ctas reveal">
           <a class="btn primary" href="https://github.com/calebtonn/coal/blob/main/docs/02-SPEC.md"><svg aria-hidden="true"><use href="#i-github"/></svg>Read the spec</a>
-          <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/docs/poc/STATUS.md">See the proof of concept</a>
+          <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/docs/poc/DEMO.md">Build and run it</a>
           <a class="btn secondary" href="https://github.com/calebtonn/coal/blob/main/CONTRIBUTING.md">How to help</a>
         </div>
       </div>
