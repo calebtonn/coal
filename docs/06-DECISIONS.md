@@ -225,7 +225,7 @@ Considered: a separate workspace object. Not for now: it is a second record type
 
 ## ADR-018: Adopt the Go proof of concept as the Phase 1 implementation
 
-**Status.** Accepted 2026-11-07. Supersedes ADR-005.
+**Status.** Accepted 2026-11-07. Supersedes ADR-005. Layout detail filled in on 2026-11-08 from the implementation: `internal/drift` joins the layout as a test-only package that adds no code to the binary.
 
 **Context.** ADR-005 chose a TypeScript monorepo. Three weeks later it had produced no code: two empty package READMEs and the workspace files. Meanwhile Dave Nicoll built a proof of concept in Go on the `poc/go` branch (`d041c64`) that implements the Phase 1 plan end to end: capture from Claude Code hooks, store, index, daemon, MCP server, web UI, import, history and resume. On 2026-11-07 it was built from a fresh clone on macOS. The demo's capture, find, resume banner and `coal resume` steps passed; only the web UI check did not, because the UI cannot be built there. A live Claude Code 2.1.312 session captured a manifest, recorded its state over MCP, opened the next plain session by offering to continue, and resumed through `coal resume`. The README says the schema is the product; the language of the first implementation is an implementation detail, and ADR-005 already allowed a Go implementation behind the same schema.
 

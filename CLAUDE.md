@@ -83,7 +83,7 @@ make web                    # builds the UI; needs Bun and the sibling web-frame
 make e2e                    # builds the UI and the binary, then drives the UI in headless Chromium
 ```
 
-The scripts need GNU bash 4+ and GNU coreutils. On macOS, `brew install bash coreutils` and put them first on `PATH`.
+The scripts need GNU bash 4+, GNU coreutils, `jq`, `curl` and `python3`. On macOS, `brew install bash coreutils jq` and put them first on `PATH`.
 
 `make web`, `make e2e` and a plain `make demo` need `../web-framework`, a checkout of `@davenicoll/web-framework` next to this repo; the package is not published (#26). Without it the binary still builds, `/` serves a page saying the UI is not built, and the demo runs as `SKIP_BUILD=1 make demo` after `make build`, where steps 1 to 5a pass and step 5b, the built-UI check, fails; with `DEMO_SKIP_UI=1` as well, 5b is recorded as SKIP and the demo exits 0.
 
