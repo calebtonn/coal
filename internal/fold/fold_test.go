@@ -23,6 +23,13 @@ type env struct {
 
 func setup(t *testing.T) *env {
 	t.Helper()
+	return setupData(t, nil)
+}
+
+// setupData is setup with the data dir that dataDir picks from the temp
+// base and the project; nil puts it at <base>/coal, outside the project.
+func setupData(t *testing.T, dataDir func(base, project string) string) *env {
+	t.Helper()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("HOME", filepath.Join(base, "home"))
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
@@ -31,7 +38,11 @@ func setup(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(project, ".git", "config"), []byte("[remote \"origin\"]\n\turl = git@github.com:dave/budget.git\n"), 0o644)
-	a, err := app.Open(filepath.Join(base, "coal"))
+	data := filepath.Join(base, "coal")
+	if dataDir != nil {
+		data = dataDir(base, project)
+	}
+	a, err := app.Open(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,6 +387,9 @@ func TestResumeRefreshesStart(t *testing.T) {
 	}, op("test"))
 	later := time.Now().Add(5 * time.Second).UTC().Format(time.RFC3339)
 	v.send("session-start.json", "SessionStart", func(e *capture.Event) { e.Source, e.At = "resume", later })
+	// The resumed stretch writes a file; one that only talks would keep
+	// the recorded state (#20, TestResumedStretchKeepsRecordedState).
+	v.send("post-tool-use-edit.json", "PostToolUse", func(e *capture.Event) { e.At = later })
 	v.send("stop.json", "Stop", nil)
 	v.send("session-end.json", "SessionEnd", nil)
 	if m, _ := v.a.Get(id); m.State.NextStep != "add CSV export" {
@@ -639,5 +653,375 @@ func TestSummarizerResultSurvivesReappliedEnd(t *testing.T) {
 	}
 	if len(jobs()) != 0 {
 		t.Errorf("re-queued a job: %v", jobs())
+	}
+}
+
+// The resume offer Claude gave in the chat-only session of #20.
+const resumeOffer = "Want me to pick up where you left off and add CSV export and import of transactions to `budget.html`, so your data can be backed up and moved between browsers?"
+
+// stampAt writes state as recordedBy would, with the stamp's time set to
+// at, as if it was recorded then.
+func stampAt(v *env, id, recordedBy, at, summary, next string) {
+	v.t.Helper()
+	b, _ := json.Marshal(manifest.StateStamp{RecordedBy: recordedBy, At: at})
+	if _, err := v.a.Update(id, 0, func(m *manifest.Manifest) error {
+		m.State.Summary, m.State.NextStep = summary, next
+		if m.Ext == nil {
+			m.Ext = map[string]json.RawMessage{}
+		}
+		m.Ext[manifest.StateExtKey] = b
+		return nil
+	}, op("test")); err != nil {
+		v.t.Fatal(err)
+	}
+}
+
+// chatOnlySession runs session B in the project: a prompt, one reply,
+// no file written, then the end. It returns B's end time.
+func (v *env) chatOnlySession(reply string) string {
+	v.t.Helper()
+	tp := transcript(v.t, tline("user", "Hi. I'm back in this directory. What should I do?"), tline("assistant", []any{map[string]any{"type": "text", "text": reply}}))
+	withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
+	v.send("session-start-resume.json", "SessionStart", withTP)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", func(e *capture.Event) { withTP(e); e.Prompt = "Hi. I'm back in this directory. What should I do?" })
+	v.send("stop.json", "Stop", func(e *capture.Event) { withTP(e); e.LastAssistantMessage = reply })
+	end := time.Now().Add(2 * time.Second).UTC().Format(time.RFC3339)
+	v.send("session-end.json", "SessionEnd", func(e *capture.Event) { withTP(e); e.At = end })
+	return end
+}
+
+func (v *env) jobs() []string {
+	f, _ := filepath.Glob(filepath.Join(summarize.Dir(v.a.Store.Dir()), "*.json"))
+	return f
+}
+
+// hourAgo is a stamp time from an earlier session.
+func hourAgo() string { return time.Now().Add(-time.Hour).UTC().Format(time.RFC3339) }
+
+const (
+	modelSummary = "Built budget.html with income and expense tables and a running total."
+	modelNext    = "Add CSV export and import"
+)
+
+// #20: a later session that only talks keeps the state the model
+// recorded in an earlier one, and queues no summarize job for it.
+func TestChatOnlySessionKeepsRecordedState(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, "claude-code", hourAgo(), modelSummary, modelNext)
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	end := v.chatOnlySession(resumeOffer)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != modelSummary || m.State.NextStep != modelNext {
+		t.Errorf("a chat-only session replaced recorded state: %+v", m.State)
+	}
+	if m.State.LastActivityAt < end {
+		t.Errorf("lastActivityAt %q did not move to the session end %q", m.State.LastActivityAt, end)
+	}
+	if j := v.jobs(); len(j) != 0 {
+		t.Errorf("queued a summarize job for a chat-only session: %v", j)
+	}
+}
+
+// #20: extraction still fills a field the recorded state left empty.
+func TestChatOnlySessionFillsEmptyFields(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, "claude-code", hourAgo(), modelSummary, "")
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	v.chatOnlySession(resumeOffer + "\n\nNext step: add CSV export")
+	m, _ := v.a.Get(id)
+	if m.State.Summary != modelSummary || m.State.NextStep != "add CSV export" {
+		t.Errorf("state: %+v", m.State)
+	}
+	if j := v.jobs(); len(j) != 0 {
+		t.Errorf("queued a summarize job for a chat-only session: %v", j)
+	}
+}
+
+// A later session that writes a file still updates recorded state by
+// extraction, whether or not the file's type is captured (#32), and
+// whether the write reached capture through a hook or only shows in the
+// transcript.
+func TestWritingSessionReplacesRecordedState(t *testing.T) {
+	reply := "Added CSV export.\n\nNext step: add charts"
+	for _, tc := range []struct {
+		name  string
+		write func(v *env, tp *string)
+	}{
+		{"captured file", func(v *env, _ *string) {
+			v.write("budget.html", "<h1>Budget v2</h1>")
+			v.send("post-tool-use-edit.json", "PostToolUse", asB)
+		}},
+		{"file type not captured", func(v *env, _ *string) {
+			v.write("main.go", "package main\n")
+			v.send("post-tool-use-edit.json", "PostToolUse", func(e *capture.Event) { asB(e); e.Path = filepath.Join(v.project, "main.go") })
+		}},
+		{"write only in the transcript", func(v *env, tp *string) {
+			*tp = transcript(v.t, stamped(tline("user", "Add CSV export to the budget page"), time.Now()),
+				stamped(tline("assistant", []any{toolUse(filepath.Join(v.project, "main.go")), map[string]any{"type": "text", "text": reply}}), time.Now()))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := setup(t)
+			v.session1()
+			id := v.all()[0].ID
+			stampAt(v, id, "claude-code", hourAgo(), modelSummary, modelNext)
+			var tp string
+			withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
+			v.send("session-start-resume.json", "SessionStart", asB)
+			tc.write(v, &tp)
+			v.send("stop.json", "Stop", func(e *capture.Event) { withTP(e); e.LastAssistantMessage = reply })
+			v.send("session-end.json", "SessionEnd", withTP)
+			m, _ := v.a.Get(id)
+			if !strings.HasPrefix(m.State.Summary, "Added CSV export.") || m.State.NextStep != "add charts" {
+				t.Errorf("a session that wrote a file did not update state: %+v", m.State)
+			}
+		})
+	}
+}
+
+// With no stamp, a chat-only session's extraction applies as before.
+func TestChatOnlySessionWithoutStamp(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	v.chatOnlySession(resumeOffer)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != resumeOffer || m.State.NextStep != "add CSV export" {
+		t.Errorf("state: %+v", m.State)
+	}
+	if j := v.jobs(); len(j) != 1 {
+		t.Errorf("jobs: %v", j)
+	}
+}
+
+// A summarizer stamp does not protect state from a chat-only session.
+func TestChatOnlySessionAfterSummarizerStamp(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, summarize.Tool, hourAgo(), "The summarizer's account.", "Wire up CSV export")
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	v.chatOnlySession(resumeOffer)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != resumeOffer || m.State.NextStep != "Wire up CSV export" {
+		t.Errorf("state: %+v", m.State)
+	}
+	if j := v.jobs(); len(j) != 1 {
+		t.Errorf("jobs: %v", j)
+	}
+}
+
+// stamped sets the line's transcript timestamp.
+func stamped(l map[string]any, at time.Time) map[string]any {
+	l["timestamp"] = at.UTC().Format(time.RFC3339Nano)
+	return l
+}
+
+// The transcript of a resumed session still holds the writes of the
+// stretch before the resume. They are not writes of the resumed
+// stretch, which only talks, so recorded state is kept (#20).
+func TestResumedTranscriptOldWriteIsNotAWrite(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, "claude-code", hourAgo(), modelSummary, modelNext)
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	now := time.Now()
+	tp := transcript(t,
+		stamped(tline("assistant", []any{toolUse(filepath.Join(v.project, "budget.html"))}), now.Add(-2*time.Hour)),
+		stamped(tline("user", "Hi. I'm back in this directory. What should I do?"), now),
+		stamped(tline("assistant", []any{map[string]any{"type": "text", "text": resumeOffer}}), now))
+	withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
+	v.send("session-start-resume.json", "SessionStart", func(e *capture.Event) { withTP(e); e.Source = "resume" })
+	v.send("stop.json", "Stop", func(e *capture.Event) { withTP(e); e.LastAssistantMessage = resumeOffer })
+	v.send("session-end.json", "SessionEnd", withTP)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != modelSummary || m.State.NextStep != modelNext {
+		t.Errorf("a resumed chat-only stretch replaced recorded state: %+v", m.State)
+	}
+	if j := v.jobs(); len(j) != 0 {
+		t.Errorf("queued a summarize job for a chat-only stretch: %v", j)
+	}
+}
+
+// A resumed stretch of the same session that only talks keeps state
+// the model recorded in the stretch before, even though that earlier
+// stretch wrote a file (#20).
+func TestResumedStretchKeepsRecordedState(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	now := time.Now()
+	stampAt(v, id, "claude-code", now.UTC().Format(time.RFC3339), modelSummary, modelNext)
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	resumed := now.Add(2 * time.Second).UTC().Format(time.RFC3339)
+	end := now.Add(3 * time.Second).UTC().Format(time.RFC3339)
+	v.send("session-start.json", "SessionStart", func(e *capture.Event) { e.Source, e.At = "resume", resumed })
+	v.send("stop.json", "Stop", func(e *capture.Event) { e.LastAssistantMessage, e.At = resumeOffer, end })
+	v.send("session-end.json", "SessionEnd", func(e *capture.Event) { e.At = end })
+	m, _ := v.a.Get(id)
+	if m.State.Summary != modelSummary || m.State.NextStep != modelNext {
+		t.Errorf("a resumed chat-only stretch replaced recorded state: %+v", m.State)
+	}
+	if j := v.jobs(); len(j) != 0 {
+		t.Errorf("queued a summarize job for a chat-only stretch: %v", j)
+	}
+}
+
+// Writes outside the project or in .git, such as Claude Code's plan
+// files under ~/.claude, do not make a session one that wrote a file
+// (#20). The data dir here is outside the project, so its config.json
+// fails the root check; TestWritesInDataDirInsideProjectDoNotCount
+// covers the data-dir exclusion itself.
+func TestWritesOutsideProjectDoNotCount(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, "claude-code", hourAgo(), modelSummary, modelNext)
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	outside := filepath.Join(filepath.Dir(v.project), "other.html")
+	os.WriteFile(outside, []byte("x"), 0o644)
+	plan := filepath.Join(os.Getenv("HOME"), ".claude", "plans", "plan.md")
+	os.MkdirAll(filepath.Dir(plan), 0o700)
+	os.WriteFile(plan, []byte("x"), 0o644)
+	tp := transcript(t,
+		stamped(tline("user", "Hi. I'm back in this directory. What should I do?"), time.Now()),
+		stamped(tline("assistant", []any{toolUse(plan), map[string]any{"type": "text", "text": resumeOffer}}), time.Now()))
+	withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
+	v.send("session-start-resume.json", "SessionStart", withTP)
+	for _, p := range []string{outside, plan, filepath.Join(v.project, ".git", "config"), filepath.Join(v.a.Store.Dir(), "config.json")} {
+		v.send("post-tool-use-edit.json", "PostToolUse", func(e *capture.Event) { withTP(e); e.Path = p })
+	}
+	v.send("stop.json", "Stop", func(e *capture.Event) { withTP(e); e.LastAssistantMessage = resumeOffer })
+	v.send("session-end.json", "SessionEnd", withTP)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != modelSummary || m.State.NextStep != modelNext {
+		t.Errorf("writes outside the project replaced recorded state: %+v", m.State)
+	}
+	if j := v.jobs(); len(j) != 0 {
+		t.Errorf("queued a summarize job: %v", j)
+	}
+}
+
+// A write the user rejected at the permission prompt, or an Edit that
+// failed, shows in the transcript as a tool_use whose tool_result has
+// is_error set. It wrote nothing, so a stretch whose only write is that
+// one is chat-only and keeps the recorded state (#20).
+func TestRejectedTranscriptWriteIsNotAWrite(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, "claude-code", hourAgo(), modelSummary, modelNext)
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	now := time.Now()
+	write := toolUse(filepath.Join(v.project, "budget.html"))
+	write["id"] = "toolu_rejected"
+	rejected := map[string]any{"type": "tool_result", "tool_use_id": "toolu_rejected", "is_error": true,
+		"content": "The user doesn't want to proceed with this tool use."}
+	tp := transcript(t,
+		stamped(tline("user", "Add CSV export to the budget page"), now),
+		stamped(tline("assistant", []any{write}), now),
+		stamped(tline("user", []any{rejected}), now),
+		stamped(tline("assistant", []any{map[string]any{"type": "text", "text": resumeOffer}}), now))
+	withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
+	v.send("session-start-resume.json", "SessionStart", withTP)
+	v.send("stop.json", "Stop", func(e *capture.Event) { withTP(e); e.LastAssistantMessage = resumeOffer })
+	v.send("session-end.json", "SessionEnd", withTP)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != modelSummary || m.State.NextStep != modelNext {
+		t.Errorf("a rejected write replaced recorded state: %+v", m.State)
+	}
+	if j := v.jobs(); len(j) != 0 {
+		t.Errorf("queued a summarize job for a chat-only stretch: %v", j)
+	}
+}
+
+// A project reached through a symlink still counts a write to a file
+// that was removed before the fold, as it does with the real path (#20).
+func TestRemovedWriteThroughSymlinkCounts(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, "claude-code", hourAgo(), modelSummary, modelNext)
+	link := filepath.Join(filepath.Dir(filepath.Dir(v.project)), "linkproj")
+	if err := os.Symlink(v.project, link); err != nil {
+		t.Fatal(err)
+	}
+	reply := "Tried a scratch script.\n\nNext step: add charts"
+	inLink := func(e *capture.Event) { asB(e); e.Cwd = link }
+	v.send("session-start-resume.json", "SessionStart", inLink)
+	v.send("post-tool-use-edit.json", "PostToolUse", func(e *capture.Event) { inLink(e); e.Path = filepath.Join(link, "scratch.py") })
+	v.send("stop.json", "Stop", func(e *capture.Event) { inLink(e); e.LastAssistantMessage = reply })
+	v.send("session-end.json", "SessionEnd", inLink)
+	m, _ := v.a.Get(id)
+	if m.State.NextStep != "add charts" {
+		t.Errorf("a removed write through a symlinked project did not count: %+v", m.State)
+	}
+}
+
+// A data dir inside the project, as with COAL_HOME=$PWD/.sandbox/coal,
+// is still not the project: writes under it, by hook or in the
+// transcript, do not make a session one that wrote a file (#20).
+func TestWritesInDataDirInsideProjectDoNotCount(t *testing.T) {
+	v := setupData(t, func(_, project string) string { return filepath.Join(project, ".sandbox", "coal") })
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, "claude-code", hourAgo(), modelSummary, modelNext)
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+	inData := filepath.Join(v.a.Store.Dir(), "config.json")
+	tp := transcript(t,
+		stamped(tline("user", "Hi. I'm back in this directory. What should I do?"), time.Now()),
+		stamped(tline("assistant", []any{toolUse(inData), map[string]any{"type": "text", "text": resumeOffer}}), time.Now()))
+	withTP := func(e *capture.Event) { asB(e); e.TranscriptPath = tp }
+	v.send("session-start-resume.json", "SessionStart", withTP)
+	v.send("post-tool-use-edit.json", "PostToolUse", func(e *capture.Event) { withTP(e); e.Path = inData })
+	v.send("stop.json", "Stop", func(e *capture.Event) { withTP(e); e.LastAssistantMessage = resumeOffer })
+	v.send("session-end.json", "SessionEnd", withTP)
+	m, _ := v.a.Get(id)
+	if m.State.Summary != modelSummary || m.State.NextStep != modelNext {
+		t.Errorf("writes in the data dir replaced recorded state: %+v", m.State)
+	}
+	if j := v.jobs(); len(j) != 0 {
+		t.Errorf("queued a summarize job: %v", j)
+	}
+}
+
+// A session whose cwd is gone by the time of the fold, reached through
+// a symlinked parent, still counts its writes in the project: the root
+// is resolved the same way as the written path (#20). The cwd may be a
+// subdirectory removed while the repo stays, or the whole project may
+// be removed, as with a scratch project under /tmp on macOS.
+func TestMissingCwdThroughSymlinkCounts(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	a, err := app.Open(filepath.Join(base, "coal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Close() })
+	proj := filepath.Join(base, "realp", "proj")
+	if err := os.MkdirAll(filepath.Join(proj, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lnk := filepath.Join(base, "lnkp")
+	if err := os.Symlink(filepath.Join(base, "realp"), lnk); err != nil {
+		t.Fatal(err)
+	}
+	s := &Session{Cwd: filepath.Join(lnk, "proj", "sub")}
+	for _, p := range []string{filepath.Join(lnk, "proj", "x.go"), filepath.Join(lnk, "proj", "sub", "y.go")} {
+		if !inProject(a, s, p) {
+			t.Errorf("missing subdirectory cwd: %s not in project", p)
+		}
+	}
+	if err := os.RemoveAll(proj); err != nil {
+		t.Fatal(err)
+	}
+	s = &Session{Cwd: filepath.Join(lnk, "proj")}
+	if p := filepath.Join(lnk, "proj", "x.go"); !inProject(a, s, p) {
+		t.Errorf("removed project: %s not in project", p)
 	}
 }

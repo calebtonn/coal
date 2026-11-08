@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -54,6 +55,14 @@ type Session struct {
 	Unanchored bool `json:"unanchored,omitempty"`
 	// Wrote is set after the session's first captured file.
 	Wrote bool `json:"wrote,omitempty"`
+	// EditedAt is the time of the session's last file-write hook event
+	// for a file inside its project, outside .git and the data dir,
+	// whatever its type or size, so a session that only wrote files
+	// capture skips (such as .go under the default extensions, #32)
+	// still counts as having written a file at sessionEnd (#20). It is
+	// compared with StartedAt, so writes from before a resume or fork do
+	// not count for the stretch after it.
+	EditedAt string `json:"editedAt,omitempty"`
 	// ResumedFrom is the manifest matched at sessionStart, whose resume
 	// line the hook showed; ResumeActed records that the session then
 	// wrote to it (#12).
@@ -215,6 +224,9 @@ func fileWritten(a *app.App, s *Session, e *capture.Event) error {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(s.Cwd, path)
 	}
+	if inProject(a, s, path) && e.At > s.EditedAt {
+		s.EditedAt = e.At
+	}
 	cfg := LoadConfig(a.Store.Dir())
 	if !cfg.Captures(path) || skipFile(a, path) {
 		return nil
@@ -294,7 +306,9 @@ func create(a *app.App, s *Session, cfg Config) error {
 // closeOut applies the sessionEnd fallback (#2): unless the manifest's
 // state stamp shows a deliberate state write (coal_update_state or a
 // PATCH) since the session started, take state.summary and nextStep
-// from the last assistant message. intent.summary is never touched.
+// from the last assistant message. A session that wrote no file only
+// fills fields that are empty when such a write came from an earlier
+// session (#20). intent.summary is never touched.
 func closeOut(a *app.App, s *Session) error {
 	if s.ManifestID == "" {
 		return nil
@@ -320,11 +334,18 @@ func closeOut(a *app.App, s *Session) error {
 	if st, ok := manifest.StateStampOf(m); ok && st.RecordedBy == summarize.Tool && s.EndedAt != "" && st.At > s.EndedAt {
 		return nil
 	}
-	sum, next, worked := extract(a, s)
+	sum, next, worked, wrote := extract(a, s)
 	// A session that wrote nothing and got no reply, such as "hello"
 	// then exit, has nothing to say about where the work stands.
 	if !worked {
 		return nil
+	}
+	// A session that wrote no file, after a model or the web UI recorded
+	// state in an earlier session, is talk about the work, often an
+	// offer to resume it (#20). It fills only empty fields, and gets no
+	// summarize job, whose result would replace the recorded state.
+	if st, ok := manifest.StateStampOf(m); ok && !wrote && st.RecordedBy != summarize.Tool {
+		return fillState(a, s, sum, next)
 	}
 	if sum != "" || next != "" {
 		if err := applyState(a, s, sum, next); err != nil {
@@ -367,6 +388,86 @@ func applyState(a *app.App, s *Session, sum, next string) error {
 		}
 		if s.EndedAt > m.State.LastActivityAt {
 			m.State.LastActivityAt = s.EndedAt
+		}
+		return nil
+	}, op("session end"))
+	return err
+}
+
+// inProject reports whether path, a file the session wrote, is inside
+// the session's project root and outside .git and the data dir. This is
+// the capture rule without the extension, size and regular-file checks:
+// what makes a session one that wrote a file at sessionEnd (#20). Only
+// writes made with Write, Edit, MultiEdit or NotebookEdit reach it, from
+// the PostToolUse hook or the transcript; files changed through Bash or
+// any other tool are not seen. Writes Claude Code makes elsewhere in an
+// otherwise chat-only session, such as plan files under ~/.claude, do
+// not count. An unanchored session has no project, so nothing it writes
+// counts. The root is resolved as the written path is: marker.ProjectRoot
+// leaves a cwd that no longer exists unresolved, and a cwd reached
+// through a symlink would then contain none of the session's writes.
+func inProject(a *app.App, s *Session, path string) bool {
+	root := marker.ProjectRoot(s.Cwd)
+	if marker.Unanchored(root) {
+		return false
+	}
+	root = resolveWritten(root)
+	real := resolveWritten(path)
+	if !strings.HasPrefix(real, root+"/") {
+		return false
+	}
+	data := a.Store.Dir()
+	if r, err := filepath.EvalSymlinks(data); err == nil {
+		data = r
+	}
+	if real == data || strings.HasPrefix(real, data+"/") {
+		return false
+	}
+	return !slices.Contains(strings.Split(real, "/"), ".git")
+}
+
+// resolveWritten resolves symlinks in path, a file the session wrote or
+// the project root. A path removed or renamed before the fold has no
+// target to resolve, so its nearest existing ancestor is resolved and
+// the rest joined back on; otherwise a project reached through a
+// symlink, such as /tmp on macOS, would not contain it.
+func resolveWritten(path string) string {
+	path = filepath.Clean(path)
+	rest := ""
+	for dir := path; ; dir = filepath.Dir(dir) {
+		if r, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(r, rest)
+		}
+		if dir == filepath.Dir(dir) {
+			return path
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+	}
+}
+
+// atOrAfter reports whether at is not before the timestamp start. An
+// unreadable start counts every time as after it.
+func atOrAfter(at time.Time, start string) bool {
+	st, err := time.Parse(time.RFC3339Nano, start)
+	return err != nil || !at.Before(st)
+}
+
+// fillState writes the extracted state only into empty fields and
+// moves lastActivityAt forward, never intent.summary.
+func fillState(a *app.App, s *Session, sum, next string) error {
+	_, err := a.Update(s.ManifestID, 0, func(m *manifest.Manifest) error {
+		changed := false
+		if m.State.Summary == "" && sum != "" {
+			m.State.Summary, changed = sum, true
+		}
+		if m.State.NextStep == "" && next != "" {
+			m.State.NextStep, changed = next, true
+		}
+		if s.EndedAt > m.State.LastActivityAt {
+			m.State.LastActivityAt, changed = s.EndedAt, true
+		}
+		if !changed {
+			return store.ErrNoChange
 		}
 		return nil
 	}, op("session end"))
@@ -417,21 +518,50 @@ const MaxFilesTouched = 5
 // "Files touched: a, b" with at most five base names. Otherwise, or if
 // the transcript cannot be read, it uses the last assistant message
 // that Stop delivered.
-func extract(a *app.App, s *Session) (summary, nextStep string, worked bool) {
+//
+// wrote reports whether this stretch of the session (since StartedAt,
+// which a resume or fork moves) wrote any file inside its project,
+// captured or not (#20), with Write, Edit, MultiEdit or NotebookEdit;
+// changes made through Bash or other tools are not seen. It comes from
+// s.EditedAt, set by the file-write hook events, or from a transcript
+// write at or after StartedAt whose tool_result was not an error, so a
+// write the user rejected or an Edit that failed does not count. s.Wrote is not enough: it is set only for files capture
+// keeps, so a session that edited only .go files under the default
+// extensions would count as chat-only (#32), and it is never reset, so
+// a resumed stretch would inherit the earlier stretch's writes. The
+// transcript, which a resumed session shares with the stretches before
+// it, counts only writes timed in this stretch and inside the project.
+// The hook events cover sessions whose transcript cannot be read; the
+// transcript covers writes no hook reported. s.Wrote counts only for a
+// scratch file written before EditedAt existed, the one case where it
+// is set and EditedAt is not.
+func extract(a *app.App, s *Session) (summary, nextStep string, worked, wrote bool) {
 	summary, nextStep = capture.ExtractState(s.LastAssistantMessage)
+	if s.EditedAt != "" {
+		wrote = s.EditedAt >= s.StartedAt
+	} else {
+		wrote = s.Wrote
+	}
 	worked = s.Wrote || s.LastAssistantMessage != ""
 	// Only Claude Code's own session files are read, so a payload cannot
 	// point extraction at any other file.
 	if s.TranscriptPath == "" || !allowedTranscript(s) {
-		return summary, nextStep, worked
+		return summary, nextStep, worked, wrote
 	}
 	if _, err := os.Lstat(s.TranscriptPath); err != nil && s.LastAssistantMessage != "" {
-		return summary, nextStep, worked
+		return summary, nextStep, worked, wrote
 	}
 	t, err := summarize.ReadFile(s.TranscriptPath, MaxTranscript)
 	if err != nil {
 		a.Store.Log("capture: transcript for %s: %v", s.SessionRef, err)
-		return summary, nextStep, worked
+		return summary, nextStep, worked, wrote
+	}
+	for _, w := range t.Writes {
+		if wrote {
+			break
+		}
+		// A line with no time counts, as it did before writes had one.
+		wrote = (w.At.IsZero() || atOrAfter(w.At, s.StartedAt)) && inProject(a, s, w.Path)
 	}
 	worked = worked || t.LastAssistant != "" || len(t.Files) > 0
 	// As in summarize.FromTranscript: the prompt fallback must pass the
@@ -450,7 +580,7 @@ func extract(a *app.App, s *Session) (summary, nextStep string, worked bool) {
 	if names := baseNames(t.Files, MaxFilesTouched); len(names) > 0 {
 		summary = strings.TrimSpace(summary + " Files touched: " + strings.Join(names, ", "))
 	}
-	return summary, nextStep, worked
+	return summary, nextStep, worked, wrote
 }
 
 // allowedTranscript reports whether the session's transcript is a Claude
