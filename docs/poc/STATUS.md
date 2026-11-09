@@ -1,6 +1,6 @@
 # COAL status
 
-Updated 2026-11-08, later. #20 is fixed: a session that only talks no longer replaces state that the model or the web UI recorded in an earlier session, and extraction only fills empty fields. The gate week starts when #21 to #28 are closed.
+Updated 2026-11-09. #20 is fixed: after the model or the web UI records state, a later session that only talks fills only empty fields and no longer replaces what is there. The gate week starts when #21 to #28 and #31 are closed.
 
 Updated 2026-11-08. This change adds the anti-drift checks: a Go CI workflow (`.github/workflows/ci.yml`) that runs vet, build, the tests and the demo without the UI step on Ubuntu and macOS; `make check`, which runs gofmt, vet, the `internal/drift` tests and the site build; `internal/drift`, a test-only package that fails when a doc, the site and the code disagree, with `known.txt` for failures that have an issue (#27 today) and `allow.txt` for lines where a forbidden word (the ADR-008 word or a retired stack word) is legitimate; a pull request template; `docs/07-DRIFT.md`, which names the sources of truth and the order they win in, and the procedure for changing the vision on purpose; the `/drift-review` skill under `.claude/skills/`, which produces reports in `docs/drift/`; and a `**Status.**` line and an `**In the code.**` paragraph on every accepted ADR in `docs/06-DECISIONS.md`. Dogfooding started on the maintainer's machine on 2026-11-08: the hooks are installed through a project-local Claude Code settings file, the MCP server is registered for the repo, the data dir is the default `~/.coal`, and the first manifest was recorded with `coal new`. The gate week (T14) has no start date yet. It starts when #20 to #28 are closed, and the date goes here then.
 
@@ -81,7 +81,7 @@ Try it: `make demo`, or follow `docs/poc/DEMO.md`. The one thing not run at that
 
 ## Next
 
-- Fix the nine bugs from the 2026-11-07 run, one issue and one PR to `main` each: #20 to #28.
+- Fix the nine open bugs, one issue and one PR to `main` each: #21 to #28 and #31.
 - Then the Phase 1 gate week (T14 in `docs/05-MVP-TASKS.md`), which has not started.
 - Still open from the proof of concept: a Cursor or Codex adapter, and import from chat apps. The opt-in model summarizer landed in M11 as `config.summarizer`. The `CLAUDE.md` purge line (`a1a7969`) is on `main`.
 

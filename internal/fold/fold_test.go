@@ -259,6 +259,11 @@ const sidB = "8d2a4f3b-6c5e-4f90-8b12-3c4d5e6f7a81"
 // asB makes an event belong to the second recorded session.
 func asB(e *capture.Event) { e.SessionRef = capture.SessionRef(sidB) }
 
+const sidC = "0f3b5a7c-9d1e-4a2b-8c3d-4e5f6a7b8c92"
+
+// asC makes an event belong to a third session.
+func asC(e *capture.Event) { e.SessionRef = capture.SessionRef(sidC) }
+
 func TestTwoSessionsBothExtract(t *testing.T) {
 	v := setup(t)
 	v.write("budget.html", "x")
@@ -813,6 +818,45 @@ func TestChatOnlySessionAfterSummarizerStamp(t *testing.T) {
 	}
 	if j := v.jobs(); len(j) != 1 {
 		t.Errorf("jobs: %v", j)
+	}
+}
+
+// #20 as the code applies it: protection follows the manifest's state
+// stamp, not who wrote the current text. After a model stamp, a session
+// that writes a file replaces the state by extraction, and a later
+// session that only talks keeps that extraction and queues no job.
+func TestChatOnlyAfterWritingSessionKeepsExtractedState(t *testing.T) {
+	v := setup(t)
+	v.session1()
+	id := v.all()[0].ID
+	stampAt(v, id, "claude-code", hourAgo(), modelSummary, modelNext)
+	writeConfig(t, v, `{"summarizer": {"command": ["true"]}}`)
+
+	reply := "Added CSV export.\n\nNext step: add charts"
+	v.send("session-start-resume.json", "SessionStart", asB)
+	v.write("budget.html", "<h1>Budget v2</h1>")
+	v.send("post-tool-use-edit.json", "PostToolUse", asB)
+	v.send("stop.json", "Stop", func(e *capture.Event) { asB(e); e.LastAssistantMessage = reply })
+	v.send("session-end.json", "SessionEnd", asB)
+	m, _ := v.a.Get(id)
+	if !strings.HasPrefix(m.State.Summary, "Added CSV export.") || m.State.NextStep != "add charts" {
+		t.Fatalf("the writing session did not update state: %+v", m.State)
+	}
+	jobsAfterB := len(v.jobs())
+
+	tp := transcript(t, tline("user", "Hi. I'm back in this directory. What should I do?"), tline("assistant", []any{map[string]any{"type": "text", "text": resumeOffer}}))
+	withTP := func(e *capture.Event) { asC(e); e.TranscriptPath = tp }
+	v.send("session-start-resume.json", "SessionStart", withTP)
+	v.send("user-prompt-submit.json", "UserPromptSubmit", func(e *capture.Event) { withTP(e); e.Prompt = "Hi. I'm back in this directory. What should I do?" })
+	v.send("stop.json", "Stop", func(e *capture.Event) { withTP(e); e.LastAssistantMessage = resumeOffer })
+	v.send("session-end.json", "SessionEnd", withTP)
+
+	m, _ = v.a.Get(id)
+	if !strings.HasPrefix(m.State.Summary, "Added CSV export.") || m.State.NextStep != "add charts" {
+		t.Errorf("a chat-only session replaced the writing session's extraction: %+v", m.State)
+	}
+	if n := len(v.jobs()); n != jobsAfterB {
+		t.Errorf("the chat-only session queued a summarize job: %d jobs, was %d", n, jobsAfterB)
 	}
 }
 
