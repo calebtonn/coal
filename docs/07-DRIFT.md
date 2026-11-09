@@ -54,6 +54,8 @@ Two checks are enforced at runtime rather than in `internal/drift`: `internal/mc
 
 The review reads `site/index.html`, `README.md`, `CONTRIBUTING.md`, `docs/01` to `docs/07`, `CLAUDE.md`, then `cmd/coal`, `internal/*`, `spec/` and `scripts/demo.sh`. It writes `docs/drift/YYYY-MM-DD.md` with one row per claim: the claim, where it is made (file and line), what the code or another document says, a classification, and a one-line verdict. The three classifications are: code drifted (open an issue), docs drifted (fix in a docs PR), vision changed (needs an ADR). The review verifies every row against the code before listing it, fixes nothing, and ends by printing the issues to open. It opens none.
 
+The site is written for everyone, not for people who read the repo. It states the vision and should make people want it, so it leaves out mechanism, exceptions and status, and a site sentence that is simpler than the spec is not drift. A site sentence drifts only when it promises something no source above it backs, or says something false about what exists. The fix is then a shorter sentence that is true, never more detail. Detail belongs in `docs/02-SPEC.md` and `docs/04-INTENT-MANIFEST.md`.
+
 The review runs on these events, not on a calendar: before the gate week (T14 in `docs/05-MVP-TASKS.md`), in the PR that accepts an ADR, and at each phase retro.
 
 Reports in `docs/drift/` quote the text they flag, so the drift checks skip that folder; `docs/drift/README.md` is still checked. The maintainer commits reports. A contributor who runs the review files the issues from the rows and does not open a PR for the report.
