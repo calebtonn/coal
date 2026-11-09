@@ -54,7 +54,7 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 | `hash` | string | yes | `sha256:<hex>` of the latest version. When `skipped` is set at registration, the value is a salted HMAC-SHA256 blind hash, not the digest of a body. A purged version keeps the digest it had (#37 asks whether it should). |
 | `title` | string | yes | Human name |
 | `type` | enum | yes | `html` \| `code` \| `doc` \| `data` \| `image` \| `other` |
-| `mime` | string | yes | e.g. `text/html` |
+| `mime` | string | yes | e.g. `text/html`. When the caller gives none, COAL sets it from its own table for the extensions it classifies, so the same file gets the same MIME on every machine; other extensions use the host's table, then a check for text. |
 | `uri` | string | no | Original location (`file://`, `https://`). When present, the manifest and `uri` together identify the artifact, and `versions` holds its history. |
 | `size` | integer | no | Bytes of the latest version |
 | `createdAt` | ISO 8601 | yes | When the latest version was recorded |

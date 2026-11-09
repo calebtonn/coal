@@ -60,10 +60,9 @@ jobs:
       # soft step below; everything else must pass here.
       - name: Test (macOS, packages that must pass)
         if: runner.os == 'macOS'
-        run: go test $(go list ./... | grep -v /node_modules/ | grep -v -E '/(cmd/coal|internal/daemon|internal/importer/claudecode|internal/store)$')
+        run: go test $(go list ./... | grep -v /node_modules/ | grep -v -E '/(cmd/coal|internal/importer/claudecode|internal/store)$')
 
       # Known darwin failures, each with its issue:
-      #   #22 internal/daemon
       #   #23 internal/importer/claudecode
       #   #31 cmd/coal (the resume tests fail when the project path goes through the /var symlink)
       #   #24 internal/store
@@ -74,7 +73,7 @@ jobs:
       - name: Test (macOS, known failures)
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: go test ./cmd/coal ./internal/daemon ./internal/importer/claudecode ./internal/store
+        run: go test ./cmd/coal ./internal/importer/claudecode ./internal/store
 
       # SKIP_BUILD skips the UI build, which needs Bun and the unpublished
       # ../web-framework checkout (#26). DEMO_SKIP_UI skips the built-UI

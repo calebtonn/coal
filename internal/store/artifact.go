@@ -28,19 +28,61 @@ type ArtifactInput struct {
 	Producer               manifest.Provenance
 }
 
+// fileTypes lists the extensions COAL classifies, each with its artifact
+// type and MIME. init registers every MIME with the mime package, so the
+// host's mime.types never decides them (#22): left to the host, .md is
+// text/plain on macOS and .ts is an MPEG transport stream. Every text
+// format gets a text/ type, so readers treat it as text; JSON and XML
+// keep the application/ types readers already know. The mime package
+// adds charset=utf-8 to each text/ type.
+var fileTypes = []struct{ typ, mime, exts string }{
+	{"html", "text/html", "html htm"},
+	{"doc", "text/markdown", "md markdown"},
+	{"doc", "text/plain", "txt"},
+	{"doc", "text/x-rst", "rst"},
+	{"data", "application/json", "json"},
+	{"data", "text/csv", "csv"},
+	{"data", "text/yaml", "yaml yml"},
+	{"data", "application/xml", "xml"},
+	{"data", "text/tab-separated-values", "tsv"},
+	{"image", "image/png", "png"},
+	{"image", "image/jpeg", "jpg jpeg"},
+	{"image", "image/gif", "gif"},
+	{"image", "image/svg+xml", "svg"},
+	{"image", "image/webp", "webp"},
+	{"code", "text/x-go", "go"},
+	{"code", "text/javascript", "js mjs cjs"},
+	{"code", "text/typescript", "ts tsx"},
+	{"code", "text/jsx", "jsx"},
+	{"code", "text/x-python", "py"},
+	{"code", "text/x-ruby", "rb"},
+	{"code", "text/x-rust", "rs"},
+	{"code", "text/x-java", "java"},
+	{"code", "text/x-kotlin", "kt"},
+	{"code", "text/x-c", "c h"},
+	{"code", "text/x-c++", "cc cpp hpp"},
+	{"code", "text/x-csharp", "cs"},
+	{"code", "text/x-swift", "swift"},
+	{"code", "text/x-shellscript", "sh bash zsh"},
+	{"code", "text/css", "css"},
+	{"code", "text/x-scss", "scss"},
+	{"code", "text/x-sql", "sql"},
+	{"code", "text/x-php", "php"},
+	{"code", "text/x-lua", "lua"},
+	{"code", "text/x-svelte", "svelte"},
+	{"code", "text/x-vue", "vue"},
+	{"code", "text/x-toml", "toml"},
+}
+
 var typeByExt = map[string]string{}
 
 func init() {
-	for t, exts := range map[string]string{
-		"html":  "html htm",
-		"doc":   "md markdown txt rst",
-		"data":  "json csv yaml yml xml tsv",
-		"image": "png jpg jpeg gif svg webp",
-		"code": "go js mjs cjs ts tsx jsx py rb rs java kt c h cc cpp hpp cs swift " +
-			"sh bash zsh css scss sql php lua svelte vue toml",
-	} {
-		for e := range strings.FieldsSeq(exts) {
-			typeByExt["."+e] = t
+	for _, f := range fileTypes {
+		for e := range strings.FieldsSeq(f.exts) {
+			typeByExt["."+e] = f.typ
+			if err := mime.AddExtensionType("."+e, f.mime); err != nil {
+				panic(err)
+			}
 		}
 	}
 }
