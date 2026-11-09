@@ -51,7 +51,7 @@ An Intent Manifest is a portable, user-owned record of one unit of intent: what 
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `hash` | string | yes | `sha256:<hex>` of the latest version |
+| `hash` | string | yes | `sha256:<hex>` of the latest version. When `skipped` is set at registration, the value is a salted HMAC-SHA256 blind hash, not the digest of a body. A purged version keeps the digest it had (#37 asks whether it should). |
 | `title` | string | yes | Human name |
 | `type` | enum | yes | `html` \| `code` \| `doc` \| `data` \| `image` \| `other` |
 | `mime` | string | yes | e.g. `text/html` |
@@ -71,7 +71,7 @@ When an [Agent Trace](https://agent-trace.dev/) record exists for a code artifac
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `hash` | string | yes | `sha256:<hex>` |
+| `hash` | string | yes | `sha256:<hex>`. When `skipped` is set at registration, the value is a salted HMAC-SHA256 blind hash, not the digest of a body. A purged version keeps the digest it had (#37 asks whether it should). |
 | `size` | integer | no | Bytes |
 | `createdAt` | ISO 8601 | yes | When this version was recorded |
 | `producer` | Provenance | yes | Which tool produced this version |

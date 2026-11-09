@@ -122,7 +122,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-011: One capture contract, adapters for every coding agent with hooks
 
-**Status.** Accepted 2026-11-05. Amends ADR-003.
+**Status.** Accepted 2026-11-05. Amends ADR-003. Contract filled in on 2026-11-08 from the implementation: it has a fifth event, `prompt {prompt}`, which carries the user's message cut to 8000 characters, because ADR-009 needs the session's first message as `intent.summary`. The fold keeps the session's first prompt that passes the summary filter (#11). An adapter whose tool has no prompt hook sends no `prompt` event, so a manifest its session creates starts with the placeholder summary `Work in <project>` and `intent.source` set to `model`; the first prompt that passes the filter in any later session attached to that manifest replaces the placeholder and sets the source to `user`.
 
 **Context.** ADR-003 chose Claude Code because it was the only mainstream tool with lifecycle hooks. That is no longer true (#8): Cursor, Codex CLI and Gemini CLI all have session, tool and stop or end events, and all pass JSON on stdin. If the Claude Code adapter is written as a special case, each later tool means rework, and Phase 2's "Reach" stays expensive for no reason.
 
@@ -130,7 +130,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 **Consequences.** A little extra work in T08 kept the contract separate from Claude Code's payload shapes (`internal/capture`: the contract in `event.go`, the Claude Code translation in `claudecode.go`). Phase 2's "done when" (a manifest written by something other than Claude Code, resumed from a third tool) becomes reachable with two small adapters. ADR-003's MVP scope stands; only its reasoning changes.
 
-**In the code.** The capture contract is `internal/capture/event.go`; the Claude Code adapter is `internal/capture/claudecode.go`. `cmd/coal/hook.go` is the hook entry point and `cmd/coal/adapter.go` installs and removes adapters. Claude Code is the only adapter today.
+**In the code.** The capture contract is `internal/capture/event.go`; the Claude Code adapter is `internal/capture/claudecode.go`. `cmd/coal/hook.go` is the hook entry point and `cmd/coal/adapter.go` installs and removes adapters. Claude Code is the only adapter today. `internal/fold/fold.go` folds the events into manifests, including the first prompt and the placeholder upgrade.
 
 ## ADR-012: Import from session records already on disk
 
@@ -158,7 +158,7 @@ Short form. Add a new entry for any decision that changes the shape of the syste
 
 ## ADR-014: Keep history of manifest changes
 
-**Status.** Accepted 2026-11-05. Status and decision reworded on 2026-11-07 to describe the implementation (ADR-018). Two constraints: a hook never runs git (SessionEnd has a 1.5 s budget), it only marks `.history-pending` through deferred history; the daemon tick commits `manifests/` in a batch under the store-wide `.git.lock` once that marker has been quiet for two seconds, and `coal queue drain` or any non-hook CLI command commits what is pending as soon as it opens the store. Uses the `git` on PATH; if none, skip silently. Landed in the proof of concept (M11).
+**Status.** Accepted 2026-11-05. Status and decision reworded on 2026-11-07 to describe the implementation (ADR-018). Two constraints: a hook never runs git (SessionEnd has a 1.5 s budget), it only marks `.history-pending` through deferred history; the daemon tick commits `manifests/` in a batch under the store-wide `.git.lock` once that marker has been quiet for two seconds, and `coal queue drain` or any non-hook CLI command commits what is pending as soon as it opens the store. Uses the `git` on PATH; if none, skip silently. Landed in the proof of concept (M11). Noted on 2026-11-08: 1.5 s is the Claude Code default this decision was written against; the adapter installs the SessionEnd hook with a 5 second timeout (`cmd/coal/adapter.go`), and the hook only queues an event, so it fits either budget.
 
 **Context.** Manifests are mutable. `nextStep`, `status` and `openQuestions` are overwritten in place, so there is no way to answer "what was next last week", to see when an intent was abandoned, or to recover from a bad write by a model.
 
@@ -184,7 +184,7 @@ Considered: an append-only event log per manifest with the manifest as a project
 
 ## ADR-016: Capture lifecycle and the resume moment
 
-**Status.** Accepted 2026-11-05. Resolves #1, #2, #3. Consequences amended on 2026-11-07 for the order of extraction and the summarizer (ADR-018). Amended on 2026-11-08: a session that wrote no file of any type inside the project, outside `.git` and the data dir, does not replace state that a model or the web UI recorded in an earlier session; extraction only fills empty fields, and no summarize job is queued (#20). A resume or fork starts a new session for this rule, so a write or a recorded state from before it belongs to an earlier one.
+**Status.** Accepted 2026-11-05. Resolves #1, #2, #3. Consequences amended on 2026-11-07 for the order of extraction and the summarizer (ADR-018). Noted on 2026-11-08: 1.5 s is the Claude Code default this decision was written against; the adapter installs the SessionEnd hook with a 5 second timeout (`cmd/coal/adapter.go`), and the hook only queues an event, so it fits either budget. Amended on 2026-11-08: a session that wrote no file of any type inside the project, outside `.git` and the data dir, does not replace state that a model or the web UI recorded in an earlier session; extraction only fills empty fields, and no summarize job is queued (#20). A resume or fork starts a new session for this rule, so a write or a recorded state from before it belongs to an earlier one.
 
 **Context.** The first draft assumed `Stop` meant end of session, that a hook could ask the running model for a summary, and that a `SessionStart` hook could make the assistant speak before the user typed. None of those are true of Claude Code hooks: `Stop` fires after every assistant turn, `SessionEnd` is the per-session event with a 1.5 second budget, a command hook cannot query the session's model, and no assistant turn happens until the user sends one.
 
