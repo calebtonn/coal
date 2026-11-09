@@ -30,10 +30,25 @@ type Transcript struct {
 	Prompts       []string // real user prompts, oldest first
 	LastAssistant string   // text of the last assistant message
 	Files         []string // absolute paths written, first write first
+	Writes        []Write  // every write that did not fail, in order
 	BadLines      int      // lines that did not parse
 
 	seen    map[string]bool
 	lastMsg string
+	failed  map[string]bool // tool_use ids whose tool_result is an error
+	ids     []string        // the tool_use id of each entry in Writes
+}
+
+// Write is one write tool call in a transcript: the absolute path and
+// the time of its line, zero when the line had none. A resumed session's
+// transcript still holds the writes from before the resume, so a caller
+// that cares about one stretch filters by At. A call whose tool_result
+// has is_error set, because the user rejected it at the permission
+// prompt or the edit failed, wrote nothing and is left out of Writes;
+// Files still lists it, as a file the session tried to write.
+type Write struct {
+	Path string
+	At   time.Time
 }
 
 type line struct {
@@ -53,10 +68,13 @@ type message struct {
 }
 
 type block struct {
-	Type  string `json:"type"`
-	Text  string `json:"text"`
-	Name  string `json:"name"`
-	Input struct {
+	Type      string `json:"type"`
+	Text      string `json:"text"`
+	Name      string `json:"name"`
+	ID        string `json:"id"`
+	ToolUseID string `json:"tool_use_id"`
+	IsError   bool   `json:"is_error"`
+	Input     struct {
 		FilePath     string `json:"file_path"`
 		NotebookPath string `json:"notebook_path"`
 	} `json:"input"`
@@ -98,18 +116,36 @@ func ReadFile(path string, maxBytes int64) (*Transcript, error) {
 func Parse(r io.Reader) (*Transcript, error) { return parse(bufio.NewReader(r)) }
 
 func parse(r *bufio.Reader) (*Transcript, error) {
-	t := &Transcript{seen: map[string]bool{}}
+	t := &Transcript{seen: map[string]bool{}, failed: map[string]bool{}}
 	for {
 		raw, err := r.ReadBytes('\n')
 		if raw = bytes.TrimSpace(raw); len(raw) > 0 && !t.add(raw) {
 			t.BadLines++
 		}
 		if errors.Is(err, io.EOF) {
+			t.dropFailed()
 			return t, nil
 		} else if err != nil {
+			t.dropFailed()
 			return t, err
 		}
 	}
+}
+
+// dropFailed removes the writes whose tool_result was an error. A write
+// with no result in the transcript, such as one cut off by the end of
+// the session, is kept.
+func (t *Transcript) dropFailed() {
+	if len(t.failed) == 0 {
+		return
+	}
+	kept := t.Writes[:0]
+	for i, w := range t.Writes {
+		if id := t.ids[i]; id == "" || !t.failed[id] {
+			kept = append(kept, w)
+		}
+	}
+	t.Writes, t.ids = kept, nil
 }
 
 // add folds one line in and reports whether it parsed.
@@ -124,7 +160,11 @@ func (t *Transcript) add(raw []byte) bool {
 	if t.Cwd == "" && filepath.IsAbs(l.Cwd) {
 		t.Cwd = filepath.Clean(l.Cwd)
 	}
-	if ts, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil {
+	ts, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+	if err != nil {
+		ts = time.Time{}
+	}
+	if !ts.IsZero() {
 		if t.FirstAt.IsZero() || ts.Before(t.FirstAt) {
 			t.FirstAt = ts
 		}
@@ -156,7 +196,9 @@ func (t *Transcript) add(raw []byte) bool {
 			if p == "" {
 				p = b.Input.NotebookPath
 			}
-			t.wrote(p)
+			t.wrote(p, ts, b.ID)
+		case l.Type == "user" && b.Type == "tool_result" && b.IsError && b.ToolUseID != "":
+			t.failed[b.ToolUseID] = true
 		}
 	}
 	text := strings.Join(texts, "\n\n")
@@ -184,14 +226,19 @@ func (t *Transcript) add(raw []byte) bool {
 	return true
 }
 
-func (t *Transcript) wrote(p string) {
+func (t *Transcript) wrote(p string, at time.Time, id string) {
 	if p == "" {
 		return
 	}
 	if !filepath.IsAbs(p) && t.Cwd != "" {
 		p = filepath.Join(t.Cwd, p)
 	}
-	if p = filepath.Clean(p); filepath.IsAbs(p) && !t.seen[p] {
+	if p = filepath.Clean(p); !filepath.IsAbs(p) {
+		return
+	}
+	t.Writes = append(t.Writes, Write{Path: p, At: at})
+	t.ids = append(t.ids, id)
+	if !t.seen[p] {
 		t.seen[p] = true
 		t.Files = append(t.Files, p)
 	}

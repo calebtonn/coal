@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // jl builds one transcript line.
@@ -112,5 +113,67 @@ func TestFromTranscriptTrivialPrompt(t *testing.T) {
 		if err != nil || summary != "" || next != "" || len(files) != 1 {
 			t.Errorf("%q: summary %q, next %q, files %v, %v", prompt, summary, next, files, err)
 		}
+	}
+}
+
+// Writes keeps every write with its line's time, so a caller can tell
+// the writes of a resumed stretch from those before it (#20).
+func TestWritesCarryTime(t *testing.T) {
+	cwd := "/work/budget"
+	body := assistant(cwd, "a1", tool("Write", "file_path", "budget.html")) +
+		strings.Replace(assistant(cwd, "a2", tool("Edit", "file_path", "budget.html")), "2026-11-06T10:00:00Z", "2026-11-08T09:30:00.250Z", 1) +
+		strings.Replace(assistant(cwd, "a3", tool("Write", "file_path", "notes.md")), `"timestamp":"2026-11-06T10:00:00Z",`, "", 1)
+	tr, err := Parse(strings.NewReader(user(cwd, "hi") + body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Write{
+		{"/work/budget/budget.html", time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)},
+		{"/work/budget/budget.html", time.Date(2026, 11, 8, 9, 30, 0, 250e6, time.UTC)},
+		{"/work/budget/notes.md", time.Time{}},
+	}
+	if len(tr.Writes) != len(want) {
+		t.Fatalf("writes %v", tr.Writes)
+	}
+	for i, w := range want {
+		if tr.Writes[i].Path != w.Path || !tr.Writes[i].At.Equal(w.At) {
+			t.Errorf("write %d: %v, want %v", i, tr.Writes[i], w)
+		}
+	}
+	if !slices.Equal(tr.Files, []string{"/work/budget/budget.html", "/work/budget/notes.md"}) {
+		t.Errorf("files %v", tr.Files)
+	}
+}
+
+// A write whose tool_result has is_error set, because the user rejected
+// it or the edit failed, wrote nothing and is not in Writes. A write
+// with no result yet, or a successful one, stays (#20).
+func TestWritesDropFailedCalls(t *testing.T) {
+	cwd := "/work/budget"
+	use := func(id, path string) map[string]any {
+		b := tool("Write", "file_path", path)
+		b["id"] = id
+		return b
+	}
+	result := func(id string, isErr bool) string {
+		return jl("user", cwd, map[string]any{"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id, "is_error": isErr, "content": "x"}}})
+	}
+	body := user(cwd, "hi") +
+		assistant(cwd, "a1", use("t1", "rejected.html")) + result("t1", true) +
+		assistant(cwd, "a2", use("t2", "ok.html")) + result("t2", false) +
+		assistant(cwd, "a3", use("t3", "pending.html"))
+	tr, err := Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, w := range tr.Writes {
+		got = append(got, w.Path)
+	}
+	if want := []string{cwd + "/ok.html", cwd + "/pending.html"}; !slices.Equal(got, want) {
+		t.Errorf("writes %v, want %v", got, want)
+	}
+	if tr.LastPrompt() != "hi" {
+		t.Errorf("a tool_result counted as a prompt: %q", tr.LastPrompt())
 	}
 }
