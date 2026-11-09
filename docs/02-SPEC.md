@@ -131,7 +131,7 @@ Resources exposed:
 
 ### F5. Claude Code adapter
 
-Implements the capture contract from ADR-011 (`sessionStart`, `prompt`, `fileWritten`, `turnEnd`, `sessionEnd`) against Claude Code hooks. `coal adapter install claude-code --settings <file>` installs five hooks into the given settings file: `SessionStart`, `UserPromptSubmit`, `PostToolUse` with matcher `Write|Edit|MultiEdit|NotebookEdit`, `Stop`, and `SessionEnd` with a 5 second timeout. `--settings` is required; COAL never edits `~/.claude/` on its own. Each hook command runs `coal hook <event>` with `COAL_HOME` baked in when it was set; install is idempotent and keeps the first `<file>.bak`.
+Implements the five-event capture contract from ADR-011, as filled in on 2026-11-08 (`sessionStart`, `prompt`, `fileWritten`, `turnEnd`, `sessionEnd`), against Claude Code hooks. `coal adapter install claude-code --settings <file>` installs five hooks into the given settings file: `SessionStart`, `UserPromptSubmit`, `PostToolUse` with matcher `Write|Edit|MultiEdit|NotebookEdit`, `Stop`, and `SessionEnd` with a 5 second timeout. `--settings` is required; COAL never edits `~/.claude/` on its own. Each hook command runs `coal hook <event>` with `COAL_HOME` baked in when it was set; install is idempotent and keeps the first `<file>.bak`.
 
 Every hook writes one event file, `~/.coal/queue/<eventId>.json`, carrying the capture event (`id`, `at`, `tool`, `sessionRef`, `cwd`, `kind`, and per kind `prompt`, `path`, `lastAssistantMessage`, `transcriptPath`, `reason`, `source`, `model`, `projectsRoot`). Every hook except `SessionEnd` then drains the queue in process under `queue/.lock`; `SessionEnd` only queues, and its event is folded later by the daemon tick, the next `SessionStart`, or `coal queue drain`.
 
