@@ -118,7 +118,7 @@ sequenceDiagram
     H->>Q: queue, drain
     Q->>S: bump lastActivityAt, keep the last reply
     U->>CC: ends session
-    CC->>H: SessionEnd (1.5 s budget)
+    CC->>H: SessionEnd (the adapter installs the hook with a 5 s timeout, and the hook only queues an event)
     H->>Q: queue/<eventId>.json only, exit
     Q->>S: later (daemon tick, next SessionStart or coal queue drain): extract state.summary and nextStep unless the model recorded state
     Q->>S: queue a summarize job when config.summarizer is set
