@@ -52,6 +52,10 @@ func viewCopy(home, body, title, mimeType string) (string, error) {
 		}
 		name += extFor(mimeType)
 	}
+	// A type with no extension can leave one that runs or is misread.
+	if e := strings.ToLower(filepath.Ext(name)); runnable[e] || misread[e] {
+		name += ".txt"
+	}
 	hex := filepath.Base(body)
 	dst := filepath.Join(home, "tmp", hex[:min(8, len(hex))]+"-"+name)
 	data, err := os.ReadFile(body)

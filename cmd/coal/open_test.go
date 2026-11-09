@@ -100,6 +100,11 @@ func TestViewCopyName(t *testing.T) {
 		{"notes", "text/markdown; charset=utf-8", "01234567-notes.md"},
 		{"lib", "text/javascript; charset=utf-8", "01234567-lib.txt"},
 		{"build.py", "text/x-python; charset=utf-8", "01234567-build.txt"},
+		// A type with no extension never leaves a runnable or misread one.
+		{"a.sh.py", "application/x-foo", "01234567-a.sh.txt"},
+		{"a.js.py", "", "01234567-a.js.txt"},
+		{"app.ts", "application/typescript", "01234567-app.ts.txt"},
+		{"x.ts.sh", "", "01234567-x.ts.txt"},
 	} {
 		got, err := viewCopy(home, body, c.title, c.mime)
 		if err != nil || got != filepath.Join(home, "tmp", c.want) {
