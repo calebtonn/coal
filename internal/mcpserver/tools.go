@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -227,7 +228,9 @@ func (s *server) readArtifact(_ context.Context, _ *mcp.CallToolRequest, in Read
 		if err != nil {
 			return fail(fmt.Errorf("reading stored body: %w", err))
 		}
-		if textual || utf8.Valid(body) {
+		// A NUL byte in the first 8 KiB means binary whatever the MIME says:
+		// a video named .ts is recorded as text/typescript (#22).
+		if bytes.IndexByte(body[:min(len(body), 8192)], 0) < 0 && (textual || utf8.Valid(body)) {
 			t := string(body)
 			if utf8.RuneCountInString(t) > maxTextChars {
 				t, out.Truncated = string([]rune(t)[:maxTextChars]), true

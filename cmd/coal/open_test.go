@@ -92,6 +92,19 @@ func TestViewCopyName(t *testing.T) {
 		{"page.html", "text/plain", "01234567-page.html.txt"},
 		{"PAGE.HTML", "text/html", "01234567-PAGE.HTML"},
 		{"v1.2 notes", "text/plain", "01234567-v1.2-notes.txt"},
+		// COAL's own table decides these on every OS (#22).
+		{"app.ts", "text/typescript; charset=utf-8", "01234567-app.ts.txt"},
+		{"view.tsx", "text/typescript; charset=utf-8", "01234567-view.tsx"},
+		{"app", "text/typescript; charset=utf-8", "01234567-app.txt"},
+		{"notes.md", "text/markdown; charset=utf-8", "01234567-notes.md"},
+		{"notes", "text/markdown; charset=utf-8", "01234567-notes.md"},
+		{"lib", "text/javascript; charset=utf-8", "01234567-lib.txt"},
+		{"build.py", "text/x-python; charset=utf-8", "01234567-build.txt"},
+		// A type with no extension never leaves a runnable or misread one.
+		{"a.sh.py", "application/x-foo", "01234567-a.sh.txt"},
+		{"a.js.py", "", "01234567-a.js.txt"},
+		{"app.ts", "application/typescript", "01234567-app.ts.txt"},
+		{"x.ts.sh", "", "01234567-x.ts.txt"},
 	} {
 		got, err := viewCopy(home, body, c.title, c.mime)
 		if err != nil || got != filepath.Join(home, "tmp", c.want) {
@@ -99,8 +112,10 @@ func TestViewCopyName(t *testing.T) {
 		}
 	}
 	// Whatever the system MIME table says, a runnable extension never comes out.
-	for _, title := range []string{"launch.desktop", "install.sh", "x.exe", "a.jar", "app.js", "a.vbs", "b.hta", "c.lnk", "d.url", "e.reg", "f.ps1", "g.msi"} {
-		for _, mt := range []string{"application/x-desktop", "application/x-sh", "text/x-sh", "application/x-msdownload", "application/java-archive", "text/javascript", "text/plain"} {
+	for _, title := range []string{"launch.desktop", "install.sh", "x.exe", "a.jar", "app.js", "app.mjs", "app.cjs", "a.vbs", "b.hta", "c.lnk", "d.url", "e.reg", "f.ps1", "g.msi",
+		"h.py", "i.rb", "j.php", "k.lua", "l.pl", "m.pyw", "n.applescript"} {
+		for _, mt := range []string{"application/x-desktop", "application/x-sh", "text/x-sh", "application/x-msdownload", "application/java-archive", "text/javascript", "text/plain",
+			"text/x-python", "text/x-ruby", "text/x-php", "text/x-lua", "text/x-shellscript"} {
 			got, err := viewCopy(home, body, title, mt)
 			if err != nil || runnable[strings.ToLower(filepath.Ext(got))] {
 				t.Errorf("viewCopy(%q, %q) = %q, %v", title, mt, got, err)

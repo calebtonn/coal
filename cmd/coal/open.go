@@ -40,9 +40,10 @@ func openCommand(goos, path string) (string, []string) {
 func viewCopy(home, body, title, mimeType string) (string, error) {
 	name := sanitize(title)
 	// The extension comes from the MIME type. The title's own extension is
-	// kept only when the type lists it and it cannot run anything.
+	// kept only when the type lists it, it cannot run anything, and the OS
+	// reads it as the same type; a misread one gets .txt after it.
 	ext := strings.ToLower(filepath.Ext(name))
-	if allowed, _ := mime.ExtensionsByType(mimeType); !slices.Contains(allowed, ext) || runnable[ext] {
+	if allowed, _ := mime.ExtensionsByType(mimeType); !slices.Contains(allowed, ext) || runnable[ext] || misread[ext] {
 		if runnable[ext] {
 			name = strings.TrimSuffix(name, filepath.Ext(name))
 		}
@@ -50,6 +51,10 @@ func viewCopy(home, body, title, mimeType string) (string, error) {
 			name = "artifact"
 		}
 		name += extFor(mimeType)
+	}
+	// A type with no extension can leave one that runs or is misread.
+	if e := strings.ToLower(filepath.Ext(name)); runnable[e] || misread[e] {
+		name += ".txt"
 	}
 	hex := filepath.Base(body)
 	dst := filepath.Join(home, "tmp", hex[:min(8, len(hex))]+"-"+name)
@@ -107,15 +112,21 @@ var runnable = map[string]bool{
 	".desktop": true, ".sh": true, ".bash": true, ".zsh": true, ".command": true, ".tool": true, ".app": true,
 	".exe": true, ".bat": true, ".cmd": true, ".com": true, ".ps1": true, ".msi": true, ".scr": true,
 	".jar": true, ".appimage": true, ".run": true, ".deb": true, ".rpm": true, ".pkg": true, ".dmg": true,
-	".js": true, ".jse": true, ".vbs": true, ".vbe": true, ".wsf": true, ".wsh": true, ".hta": true,
+	".js": true, ".mjs": true, ".cjs": true, ".jse": true, ".vbs": true, ".vbe": true, ".wsf": true, ".wsh": true, ".hta": true,
 	".reg": true, ".lnk": true, ".url": true,
+	".py": true, ".pyw": true, ".pyz": true, ".pyc": true, ".rb": true, ".rbw": true, ".pl": true, ".php": true,
+	".lua": true, ".tcl": true, ".applescript": true, ".scpt": true,
 }
 
+// misread extensions mean another type to the OS than to COAL: a .ts
+// TypeScript file opens as an MPEG transport stream (#22).
+var misread = map[string]bool{".ts": true}
+
 // extFor picks a file extension for a MIME type, preferring the common
-// one, and ".txt" for any type whose extension could run.
+// one, and ".txt" for any type whose extension could run or is misread.
 func extFor(mimeType string) string {
 	ext := extForType(mimeType)
-	if runnable[ext] {
+	if runnable[ext] || misread[ext] {
 		return ".txt"
 	}
 	return ext

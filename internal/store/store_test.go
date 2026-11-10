@@ -237,6 +237,39 @@ func TestCanonicalURI(t *testing.T) {
 	}
 }
 
+// Every extension in fileTypes gets its MIME from that table, whatever
+// the host's mime.types says (#22).
+func TestMIMEFromOwnTable(t *testing.T) {
+	for _, f := range fileTypes {
+		want := f.mime
+		if strings.HasPrefix(want, "text/") {
+			want += "; charset=utf-8"
+		}
+		for e := range strings.FieldsSeq(f.exts) {
+			if got := guessMIME("."+e, []byte{0}); got != want {
+				t.Errorf(".%s: %q, want %q", e, got, want)
+			}
+		}
+	}
+	s, m := setup(t)
+	for title, want := range map[string]string{
+		"notes.md": "text/markdown; charset=utf-8",
+		"app.ts":   "text/typescript; charset=utf-8",
+		"lib.rs":   "text/x-rust; charset=utf-8",
+		"NOTES.MD": "text/markdown; charset=utf-8",
+	} {
+		a, err := s.RegisterArtifact(m.ID, ArtifactInput{Content: []byte("x " + title), Title: title}, Op{})
+		if err != nil || a.MIME != want {
+			t.Errorf("%s: %+v, %v; want %s", title, a, err, want)
+		}
+	}
+	// A MIME the caller gives still wins.
+	a, err := s.RegisterArtifact(m.ID, ArtifactInput{Content: []byte("y"), Title: "clip.ts", MIME: "video/mp2t"}, Op{})
+	if err != nil || a.MIME != "video/mp2t" {
+		t.Errorf("explicit mime: %+v, %v", a, err)
+	}
+}
+
 func TestRegisterChecksManifestAndMIME(t *testing.T) {
 	s, m := setup(t)
 	in := ArtifactInput{Content: []byte("orphan?"), Title: "a.txt"}

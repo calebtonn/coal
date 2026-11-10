@@ -192,6 +192,24 @@ func TestReadArtifactVersions(t *testing.T) {
 	if res := f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "path": "relative.txt"}, nil); !res.IsError {
 		t.Error("relative path should be a tool error")
 	}
+	// A body with a NUL byte comes back as a path, even under a text MIME (#22).
+	for _, mt := range []string{"", "text/plain"} {
+		uri := "coal:test/clip-" + mt
+		f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "content": "G@\x00\x10\x00", "title": "clip.ts", "uri": uri, "mime": mt}, &reg)
+		var bin ReadOutput
+		f.call("coal_read_artifact", map[string]any{"id": f.id, "uri": uri}, &bin)
+		if bin.Text != "" || !strings.HasPrefix(bin.Path, "file://") {
+			t.Errorf("binary clip.ts with mime %q (%s): %+v", mt, reg.Artifact.MIME, bin)
+		}
+	}
+	// Only the first 8 KiB decides, so a late NUL leaves a text body as text.
+	late := strings.Repeat("log line\n", 1000) + "\x00"
+	f.call("coal_register_artifact", map[string]any{"manifestId": f.id, "content": late, "title": "server.log", "uri": "coal:test/log", "mime": "text/plain"}, &reg)
+	var logOut ReadOutput
+	f.call("coal_read_artifact", map[string]any{"id": f.id, "uri": "coal:test/log"}, &logOut)
+	if logOut.Text != late || logOut.Path != "" {
+		t.Errorf("late NUL: text %d bytes, path %q", len(logOut.Text), logOut.Path)
+	}
 }
 
 func TestUpdateStateRev(t *testing.T) {
